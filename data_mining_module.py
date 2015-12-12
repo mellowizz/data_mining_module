@@ -7,9 +7,9 @@ Created on Tue Aug 18 13:56:26 2015
 """
 
 from __future__ import division
-
+import time
+import os
 import sys
-import pandas as pd
 import io
 from sklearn import cross_validation
 from sklearn import metrics
@@ -47,9 +47,9 @@ def decision_tree_neural(X_train, y_train):
         tournament_size=3,
         generations_number=10)
     gs_dtree.fit(X_train, y_train)
-    print(gs_dtree.best_score_, gs_dtree.best_params_)
+    # print(gs_dtree.best_score_, gs_dtree.best_params_)
     # best_parameters, score, _ = max(gs_dtree.best_score_, key=lambda x: x[1])
-    # return param_dict
+    return gs_dtree.best_params_
 
 
 def extra_tree_neural(X_train, y_train):
@@ -92,15 +92,35 @@ def plot_feature_importance(forest, all_df, num_feat=10):
     plt.show()
 
 
-def generate_classification_report(clf, x_test, y_test):
+def generate_classification_report(clf, x_test, y_test, out_file=None):
     """Prints out a confusion matrix from the classifier object."""
     expected = y_test
     predicted = clf.predict(x_test)
-
-    print("Classification report for classifier %s:\n%s\n"
-          % (clf, metrics.classification_report(expected, predicted)))
-    print("Confusion matrix:\n%s" %
-          metrics.confusion_matrix(expected, predicted))
+    report = """Classification report {}:
+    {}\n""".format(clf, metrics.classification_report(expected, predicted))
+    confusion = """Confusion matrix:
+    {}\n""".format(metrics.confusion_matrix(expected, predicted))
+    scores = cross_validation.cross_val_score(clf, X_train, y_train, cv=5,
+                                              n_jobs=-1)
+    accuracy = "Accuracy: {:0.2f} (+/- {:0.2f})".format(scores.mean(),
+                                                        scores.std() * 2)
+    print(report)
+    print(confusion)
+    print(accuracy)
+    print(scores)
+    if out_file is not None:
+        try:
+            if sys.version < '3':
+                infile = io.open(out_file, 'wb')
+            else:
+                infile = io.open(out_file, 'wb')
+            with infile as classification:
+                classification.write(report)
+                classification.write(confusion)
+                classification.write(accuracy)
+                classification.write("{}".format(scores))
+        except IOError:
+            print("Sorry can't read: {}".format(out_file))
     return metrics.confusion_matrix(expected, predicted)
 
 
@@ -109,19 +129,16 @@ def extra_tree(X, y):
     e_tree = ExtraTreesClassifier(n_estimators=800,
                                   max_features='sqrt',
                                   n_jobs=-1, max_depth=None,
-                                  criterion='entropy').fit(X_train, y_train)
+                                  criterion='entropy').fit(X, y)
     generate_classification_report(e_tree, X, y)
     plot_feature_importance(e_tree, X)
     return e_tree
 
 
-def decision_tree(X, y):
+def decision_tree(X, y, trainingparam, out_file):
     """ Decision Tree Classifier """
-    d_tree = DecisionTreeClassifier(
-        criterion='gini', max_depth=10,
-        max_features='auto', min_samples_leaf=2,
-        min_samples_split=4).fit(X_train, y_train)
-    generate_classification_report(d_tree, X, y)
+    d_tree = DecisionTreeClassifier(**trainingparam).fit(X, y)
+    generate_classification_report(d_tree, X, y, out_file)
     # dot_data = StringIO()
     return d_tree
 
@@ -202,7 +219,6 @@ def get_lineage(tree, feature_names, wet_classes,
 if __name__ == '__main__':
     paramdict = {
         "natflo_wetness": ["dry", "mesic", "very wet"],
-        "natflo_depression": ["0", "1"],
         "natflo_hydromorphic": ["0", "1"],
         "natflo_immature_soil": ["0", "1"],
         "natflo_species_richness": ["species_poor", "species_rich"],
@@ -211,7 +227,11 @@ if __name__ == '__main__':
         "eagle_vegetationtype": ["graminaceous_herbaceous",
                                  "herbaceous", "shrub", "tree"]
         }
-    parameter = "natflo_wetness"
+    trainingparams = {'criterion': 'entropy', 'max_depth': 4,
+                      'max_features': 'auto', 'min_samples_leaf': 8,
+                      'min_samples_split': 14}
+    homedir = os.path.expanduser('~')
+    parameter = "natflo_hydromorphic"
     table_train = "_".join(["grasslands", "train", parameter]).lower()
     table_test = "grasslands_test"  # ).lower()
     DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
@@ -231,8 +251,12 @@ if __name__ == '__main__':
     y_test = test[parameter]
     X_train = X_train.select_dtypes(['float64'])
     X_test = X_test.select_dtypes(['float64'])
-    print(list(X_train))
-    print(list(X_test))
+    print("Performing PCA")
+    t0 = time()pca = RandomizedPCA(n_components=n_components, whiten=True).fit(X_train)
+    X_train_pca = pca.transform(X_train)
+    X_test_pca = pca.transform(X_test)
+    print("done in %0.3fs" % (time() - t0))
+ 
     '''
     pca = PCA(n_components=5)
     X_r = pca.fit(X_train, y_train).transform(X_train)
@@ -241,12 +265,13 @@ if __name__ == '__main__':
 
     plotPCALDA(X_r, X_r2, pca, lda, usage)
     '''
-    decision_tree_neural(X_train, y_train)
-    my_dt = decision_tree(X_train, y_train)
-    # scores = cross_validation.cross_val_score(my_dt, all_data.drop([parameter],
-    #                                                               axis=1), 
-    #                                          all_data[parameter], cv=5)
-    # print("Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
+    report_folder = os.path.join(homedir, "test-rlp", "training_cm")
+    file_name = '_'.join([parameter, "report.txt"])
+    out_file = '/'.join([report_folder, file_name])
+    my_dt = decision_tree(X_train, y_train, trainingparams, out_file)
+    new_parameters = decision_tree_neural(X_train, y_train)
+    #print(new_parameters)
+    decision_tree(X_train, y_train, new_parameters, out_file)
     my_out_file = ''.join(["C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\",
                            parameter, ".csv"])
 
