@@ -8,17 +8,22 @@ Created on Tue Aug 18 13:56:26 2015
 
 from __future__ import division
 
+import sys
+import pandas as pd
+import io
+from sklearn import cross_validation
+from sklearn import metrics
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.tree import DecisionTreeClassifier
 from evolutionary_search import EvolutionaryAlgorithmSearchCV
 # from sklearn.pipeline import Pipeline
-import commonutils
-# from sklearn import tree
 from sklearn.cross_validation import StratifiedKFold
+import pandas.io.sql as psql
+from sqlalchemy import create_engine
+import numpy as np
 # from sklearn.externals.six import StringIO
 # import pydot
 # from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-
 import matplotlib.pyplot as plt
 # from sklearn.decomposition import PCA
 
@@ -70,14 +75,43 @@ def extra_tree_neural(X_train, y_train):
     print(es_etree.best_score_, es_etree.best_params_)
 
 
+def plot_feature_importance(forest, all_df, num_feat=10):
+    importances = forest.feature_importances_
+    std = np.std([tree.feature_importances_ for tree in forest.estimators_],
+                 axis=0)
+    indices = np.argsort(importances)[::-1]
+
+    plt.figure()
+    plt.title("Feature importances")
+    plt.bar(range(num_feat), importances[indices][:num_feat],
+            color="r", yerr=std[indices][:num_feat], align="center")
+    plt.xticks(range(num_feat), all_df.columns[indices][:num_feat],
+               rotation='vertical')
+    plt.xlim([-1, num_feat])
+    plt.xlabel("Feature")
+    plt.show()
+
+
+def generate_classification_report(clf, x_test, y_test):
+    """Prints out a confusion matrix from the classifier object."""
+    expected = y_test
+    predicted = clf.predict(x_test)
+
+    print("Classification report for classifier %s:\n%s\n"
+          % (clf, metrics.classification_report(expected, predicted)))
+    print("Confusion matrix:\n%s" %
+          metrics.confusion_matrix(expected, predicted))
+    return metrics.confusion_matrix(expected, predicted)
+
+
 def extra_tree(X, y):
     """ Decision Tree Classifier """
     e_tree = ExtraTreesClassifier(n_estimators=800,
                                   max_features='sqrt',
                                   n_jobs=-1, max_depth=None,
                                   criterion='entropy').fit(X_train, y_train)
-    cu.generate_classification_report(e_tree, X, y)
-    cu.plot_feature_importance(e_tree, X)
+    generate_classification_report(e_tree, X, y)
+    plot_feature_importance(e_tree, X)
     return e_tree
 
 
@@ -87,7 +121,7 @@ def decision_tree(X, y):
         criterion='gini', max_depth=10,
         max_features='auto', min_samples_leaf=2,
         min_samples_split=4).fit(X_train, y_train)
-    cu.generate_classification_report(d_tree, X, y)
+    generate_classification_report(d_tree, X, y)
     # dot_data = StringIO()
     return d_tree
 
@@ -108,6 +142,62 @@ def plotPCALDA(X_r, X_r2, pca, lda, target_names, y):
     plt.title('LDA')
 
     plt.show()
+def get_lineage(tree, feature_names, wet_classes,
+                out_file="C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\default.csv"):
+    left = tree.tree_.children_left
+    right = tree.tree_.children_right
+    threshold = tree.tree_.threshold
+    features = [feature_names[i] for i in tree.tree_.feature]
+    value = tree.tree_.value
+    # print("value: I{0}".format(value))
+
+    try:
+        if sys.version < '3':
+            infile = io.open(out_file, 'wb')
+        else:
+            infile = io.open(out_file, 'wb')
+        with infile as tree_csv:
+            idx = np.argwhere(left == -1)[:, 0]
+
+            def recurse(left, right, child, lineage=None):
+                if lineage is None:
+                    try:
+                        lineage = [wet_classes[np.argmax(value[child])]]
+                    except KeyError as f:
+                        print(f)
+                if child in left:
+                    parent = np.where(left == child)[0].item()
+                    split = '<='
+                else:
+                    parent = np.where(right == child)[0].item()
+                    split = '>'
+
+                lineage.append((features[parent], split,
+                                threshold[parent], parent))
+
+                if parent == 0:
+                    lineage.reverse()
+                    return lineage
+                else:
+                    return recurse(left, right, parent, lineage)
+
+            for child in idx:
+                for node in recurse(left, right, child):
+                    if type(node) == tuple:
+                        a_feature, a_split, a_threshold, a_parent_node=node
+                        tree_csv.write("{},{},{:5f},{}\n".format(a_feature,
+                                                      a_split,
+                                                      a_threshold,
+                                                      a_parent_node,
+                                                      ))
+                    else:
+                        tree_csv.write(''.join([node, "\n"]))
+    except ValueError as e:
+        print(e)
+        print(node)
+    except KeyError as f:
+        print(f)
+
 
 if __name__ == '__main__':
     paramdict = {
@@ -121,21 +211,28 @@ if __name__ == '__main__':
         "eagle_vegetationtype": ["graminaceous_herbaceous",
                                  "herbaceous", "shrub", "tree"]
         }
-    parameter = "eagle_vegetationtype"
-
-    table_train = "_".join(["train", parameter]).lower()
-    table_test = "test"  # ).lower()
-
-    cu = commonutils.Commonutils({'user': 'postgres',
-                                  'database': 'rlp_spatial'})
-    train = cu.get_munged_data(table_train, paramdict, parameter)
-    test = cu.get_munged_data(table_test, paramdict, parameter)
+    parameter = "natflo_wetness"
+    table_train = "_".join(["grasslands", "train", parameter]).lower()
+    table_test = "grasslands_test"  # ).lower()
+    DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
+    engine = create_engine(DSN)
+    conn = engine.connect()
+    all_sql = "SELECT * FROM {} UNION ALL SELECT * FROM {}".format(table_train,
+                                                                   table_test)
+    test_sql = "SELECT * FROM {}".format(table_test)
+    train_sql = "SELECT * FROM {}".format(table_train)
+    train = psql.read_sql(train_sql, engine)
+    test = psql.read_sql(test_sql, engine)
     # features, labels = df.drop([parameter], axis=1), df[parameter]
+    # all_data = psql.read_sql(all_sql, engine, index='id')
     X_train = train.drop([parameter], axis=1)
-    y_train = train[parameter]
     X_test = test.drop([parameter], axis=1)
+    y_train = train[parameter]
     y_test = test[parameter]
-
+    X_train = X_train.select_dtypes(['float64'])
+    X_test = X_test.select_dtypes(['float64'])
+    print(list(X_train))
+    print(list(X_test))
     '''
     pca = PCA(n_components=5)
     X_r = pca.fit(X_train, y_train).transform(X_train)
@@ -144,16 +241,17 @@ if __name__ == '__main__':
 
     plotPCALDA(X_r, X_r2, pca, lda, usage)
     '''
-    # params = decision_tree_neural(X_train, y_train)
+    decision_tree_neural(X_train, y_train)
     my_dt = decision_tree(X_train, y_train)
-    # , params) # wet_classes) #, params)
-    BOOLEAN = ["0", "1"]
-
+    # scores = cross_validation.cross_val_score(my_dt, all_data.drop([parameter],
+    #                                                               axis=1), 
+    #                                          all_data[parameter], cv=5)
+    # print("Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
     my_out_file = ''.join(["C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\",
                            parameter, ".csv"])
 
-    cu.get_lineage(my_dt, X_train.columns, paramdict["eagle_vegetationtype"],
-                   out_file=my_out_file)
+    get_lineage(my_dt, X_train.columns, paramdict["natflo_wetness"],
+                out_file=my_out_file)
     '''
     tree.export_graphviz(d_tree, out_file=dot_data,
                          feature_names=X.columns,

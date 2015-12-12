@@ -82,8 +82,8 @@ def training(engine, csv_folder, paramdict, parameter='all',
     a_df.astype(object).convert_objects()
     print(a_df.dtypes)
     print("writing file: {0}".format(file_path))
-    a_df = a_df.sample(n=20)
-    a_df.to_csv(file_path, index=False, encoding='utf-8')
+    # a_df = a_df.sample(n=20)
+    # a_df.to_csv(file_path, index=False, encoding='utf-8')
 
 
 def get_table_names(myfolder):
@@ -124,5 +124,5 @@ if __name__ == '__main__':
     engine = create_engine(DSN)
     for param in paramdict:
         training(engine, os.path.join(os.getcwd(), 'data'), paramdict,
-                 parameter=param, table_name='test')
+                 parameter=param, table_name='saarburg_grasslands')
     # testing(engine, os.path.join(os.getcwd(), 'data'), PARAM, "test")
