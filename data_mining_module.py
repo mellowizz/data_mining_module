@@ -18,7 +18,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.decomposition import RandomizedPCA
 from sklearn.decomposition import KernelPCA
 from evolutionary_search import EvolutionaryAlgorithmSearchCV
-# from sklearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline
 from sklearn.cross_validation import StratifiedKFold
 import pandas.io.sql as psql
 from sqlalchemy import create_engine
@@ -290,6 +290,30 @@ if __name__ == '__main__':
     forest = extra_tree(X_train, y_train, et_params_simple, out_file_et)
     print("Performing PCA")
     n_components = 20
+    parameters = {
+        'max_features': ['auto', 'sqrt', 'log2'],
+        'max_depth': range(2, 12, 2),
+        'criterion': ['gini', 'entropy'],
+        'min_samples_split': range(2, 20, 2),
+        'min_samples_leaf': range(2, 20, 2)
+    }
+    grid = {
+            'dt__criterion': ['gini', 'entropy'],
+            'dt__max_features': ['auto', 'sqrt', 'log2'],
+            'dt__min_samples_split': range(2, 20, 2),
+            'dt__min_samples_leaf': range(2, 20, 2),
+            'pca__n_components': [5, 10, 15, 20]
+            }
+    pipeline = Pipeline(steps=[
+                               ('pca', RandomizedPCA()),
+                               ('dt', DecisionTreeClassifier())
+                               ])
+    clf = EvolutionaryAlgorithmSearchCV(pipeline, grid,
+                                        scoring=None,
+                                        verbose=True,
+                                        n_jobs=1,
+                                        population_size=5).fit(X_train,
+                                                               y_train)
     pca = RandomizedPCA(n_components=n_components, whiten=False).fit(X_train)
     kpca = KernelPCA(n_components=n_components).fit(X_train)
     X_train_pca = pca.transform(X_train)
