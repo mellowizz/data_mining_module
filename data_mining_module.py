@@ -135,9 +135,8 @@ def extra_tree(X, y, trainingparams, out_file):
     indices = np.argsort(importances)[::-1]
     # Print the feature ranking
     print("Feature ranking:")
-
     for f in range(20):
-        print("{} feature {} ({})".format(f + 1, indices[f],
+        print("{} feature {} ({})".format(f + 1, X.columns[indices[f]],
                                           importances[indices[f]]))
 
     num_feat = 10
@@ -222,12 +221,12 @@ def get_lineage(tree, feature_names, wet_classes,
             for child in idx:
                 for node in recurse(left, right, child):
                     if type(node) == tuple:
-                        a_feature, a_split, a_threshold, a_parent_node=node
+                        a_feature, a_split, a_threshold, a_parent_node = node
                         tree_csv.write("{},{},{:5f},{}\n".format(a_feature,
-                                                      a_split,
-                                                      a_threshold,
-                                                      a_parent_node,
-                                                      ))
+                                                                 a_split,
+                                                                 a_threshold,
+                                                                 a_parent_node,
+                                                                 ))
                     else:
                         tree_csv.write(''.join([node, "\n"]))
     except ValueError as e:
@@ -249,9 +248,9 @@ if __name__ == '__main__':
         "eagle_vegetationtype": ["graminaceous_herbaceous",
                                  "herbaceous", "shrub", "tree"]
         }
-    trainingparams = {'criterion': 'entropy', 'max_depth': 2,
-                      'max_features': 'auto', 'min_samples_leaf': 12,
-                      'min_samples_split': 2}
+    trainingparams = {'criterion': 'gini', 'max_depth': 10,
+                      'max_features': 'auto', 'min_samples_leaf': 2,
+                      'min_samples_split': 4}
     homedir = os.path.expanduser('~')
     parameter = "natflo_wetness"
     table_train = "_".join(["grasslands", "train", parameter]).lower()
@@ -290,7 +289,7 @@ if __name__ == '__main__':
     et_params_simple = {'n_estimators': 250, 'random_state': 0, 'n_jobs': -1}
     forest = extra_tree(X_train, y_train, et_params_simple, out_file_et)
     print("Performing PCA")
-    n_components = 5
+    n_components = 20
     pca = RandomizedPCA(n_components=n_components, whiten=False).fit(X_train)
     kpca = KernelPCA(n_components=n_components).fit(X_train)
     X_train_pca = pca.transform(X_train)
