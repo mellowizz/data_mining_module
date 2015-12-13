@@ -247,6 +247,11 @@ if __name__ == '__main__':
     test = psql.read_sql(test_sql, engine)
     # features, labels = df.drop([parameter], axis=1), df[parameter]
     # all_data = psql.read_sql(all_sql, engine, index='id')
+    report_folder = os.path.join(homedir, "test-rlp", "training_cm")
+    file_name = '_'.join([parameter, "report.txt"])
+    file_name_pca = '_'.join([parameter, "report_pca.txt"])
+    out_file = '/'.join([report_folder, file_name])
+    out_file_pca = '/'.join([report_folder, file_name_pca])
     train = train.fillna(0, axis=1)
     test = test.fillna(0, axis=1)
     X_train = train.drop([parameter], axis=1)
@@ -256,21 +261,17 @@ if __name__ == '__main__':
     X_train = X_train.select_dtypes(['float64'])
     X_test = X_test.select_dtypes(['float64'])
     print("Performing PCA")
-    n_components = 150
+    n_components = 8
     pca = RandomizedPCA(n_components=n_components, whiten=True).fit(X_train)
     X_train_pca = pca.transform(X_train)
     X_test_pca = pca.transform(X_test)
     print("done in {:0.3f}".format(time() - t0))
     print("Fitting the classifier to the training set")
-    decision_tree(X_train_pca, y_train, paramdict)
+    decision_tree(X_train_pca, y_train, trainingparams, out_file_pca)
     print("done in {:0.3f}".format(time() - t0))
-    report_folder = os.path.join(homedir, "test-rlp", "training_cm")
-    file_name = '_'.join([parameter, "report.txt"])
-    out_file = '/'.join([report_folder, file_name])
     my_dt = decision_tree(X_train, y_train, trainingparams, out_file)
-    new_parameters = decision_tree_neural(X_train, y_train)
-    #print(new_parameters)
-    decision_tree(X_train, y_train, new_parameters, out_file)
+    # new_parameters = decision_tree_neural(X_train, y_train)
+    # decision_tree(X_train, y_train, new_parameters, out_file)
     my_out_file = ''.join(["C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\",
                            parameter, ".csv"])
 
