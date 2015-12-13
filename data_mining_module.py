@@ -7,13 +7,17 @@ Created on Tue Aug 18 13:56:26 2015
 """
 
 from __future__ import division
+from IPython.display import Image
 from time import time
+from sklearn.externals.six import StringIO
+import pydot
 import os
 import sys
 import io
 from sklearn import cross_validation
 from sklearn import metrics
 from sklearn.ensemble import ExtraTreesClassifier
+from sklearn import tree
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.decomposition import RandomizedPCA
 from sklearn.decomposition import KernelPCA
@@ -259,11 +263,8 @@ if __name__ == '__main__':
         "eagle_vegetationtype": ["graminaceous_herbaceous",
                                  "herbaceous", "shrub", "tree"]
         }
-    trainingparams = {'criterion': 'gini', 'max_depth': 10,
-                      'max_features': 'auto', 'min_samples_leaf': 2,
-                      'min_samples_split': 4}
     homedir = os.path.expanduser('~')
-    parameter = "natflo_hydromorphic"
+    parameter = "natflo_usage_intensity"
     table_train = "_".join(["grasslands", "train", parameter]).lower()
     table_test = "grasslands_test"  # ).lower()
     DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
@@ -276,14 +277,17 @@ if __name__ == '__main__':
     train = psql.read_sql(train_sql, engine)
     test = psql.read_sql(test_sql, engine)
     report_folder = os.path.join(homedir, "test-rlp", "training_cm")
+    tree_file = '_'.join([parameter, "graph.png"])
     file_name = '_'.join([parameter, "report.txt"])
     file_name_pca = '_'.join([parameter, "report_pca.txt"])
     file_name_kpca = '_'.join([parameter, "report_kpca.txt"])
+    file_name_neural_pca = '_'.join([parameter, "report_neural_pca.txt"])
     file_name_et = '_'.join([parameter, "report_et.txt"])
     file_name_pipe = '_'.join([parameter, "report_pipeline.txt"])
     out_file = '/'.join([report_folder, file_name])
     out_file_pca = '/'.join([report_folder, file_name_pca])
     out_file_kpca = '/'.join([report_folder, file_name_kpca])
+    out_file_neural_pca = '/'.join([report_folder, file_name_neural_pca])
     out_file_et = '/'.join([report_folder, file_name_et])
     out_file_pipe = '/'.join([report_folder, file_name_pipe])
     train = train.fillna(0, axis=1)
@@ -295,12 +299,15 @@ if __name__ == '__main__':
     X_train = X_train.select_dtypes(['float64'])
     X_test = X_test.select_dtypes(['float64'])
     ''' fit classifiers! '''
+    trainingparams = {'criterion': 'gini', 'max_depth': 10,
+                      'max_features': 'auto', 'min_samples_leaf': 16,
+                      'min_samples_split': 14}
     et_params = {'n_estimators': 800, 'max_features': 'sqrt', 'n_jobs': -1,
                  'max_depth': None, 'criterion': 'entropy'}
     et_params_simple = {'n_estimators': 250, 'random_state': 0, 'n_jobs': -1}
     forest = extra_tree(X_train, y_train, et_params_simple, out_file_et)
     print("Performing PCA")
-    n_components = 20
+    n_components = 5
     parameters = {
         'max_features': ['auto', 'sqrt', 'log2'],
         'max_depth': range(2, 12, 2),
@@ -313,43 +320,54 @@ if __name__ == '__main__':
         'dt__max_features': ['auto', 'sqrt', 'log2'],
         'dt__min_samples_split': range(2, 18, 2),
         'dt__min_samples_leaf': range(2, 18, 2),
-        'kpca__n_components': [5, 10],
-        'pca__n_components': [20, 25],
+        'kpca__n_components': [10, 20],
+        'pca__n_components': [10, 20],
         'pca__whiten': [True, False]
         }
-    ev_pipe = evolutionary_pipeline(X_train, y_train, pipe_grid, out_file_pipe)
+    # print(X_train.dtypes)
+    # ev_pipe = evolutionary_pipeline(X_train, y_train, pipe_grid, out_file_pipe)
     pca = RandomizedPCA(n_components=n_components, whiten=False).fit(X_train)
     kpca = KernelPCA(n_components=n_components).fit(X_train)
     X_train_pca = pca.transform(X_train)
     X_test_pca = pca.transform(X_test)
+    print("Done fitting Randomized PCA in {:0.3f}".format(time() - t0))
     X_train_kpca = kpca.transform(X_train)
     X_test_kpca = kpca.transform(X_test)
-    print("done in {:0.3f}".format(time() - t0))
-    print("Fitting the classifier to the training set")
+    print("Done fitting Kernel PCA in {:0.3f}".format(time() - t0))
+    print("*** DT with Randomized PCA ***")
     dt_pca = decision_tree(X_train_pca, y_train, trainingparams, out_file_pca)
+    print("*** DT with Kernel PCA transform: ***")
     dt_kpca = decision_tree(X_train_kpca, y_train, trainingparams,
                             out_file_kpca)
-    print("done in {:0.3f}".format(time() - t0))
-    my_dt = decision_tree(X_train, y_train, trainingparams, out_file)
-    # new_parameters = decision_tree_neural(X_train, y_train)
-    new_parameters = decision_tree_neural(X_train_pca, y_train)
+    neural_parameters = decision_tree_neural(X_train, y_train)
+    print("*** Using neural parameters to train DT:")
+    dt_neural = decision_tree(X_train, y_train, neural_parameters, out_file)
+    print("*** Using neural parameters to train DT WITH PCA:")
+    dt_neural_pca = decision_tree(X_train, y_train, neural_parameters,
+                                  out_file_neural_pca)
+    # print("*** Randomized PCA ***")
+    # parameters_pca = decision_tree_neural(X_train_pca, y_train)
+    # print("*** Kernel PCA ***")
+    # parameters_kpca = decision_tree_neural(X_train_kpca, y_train)
     # decision_tree(X_train, y_train, new_parameters, out_file)
     my_out_file = ''.join(["C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\",
-                           parameter, ".csv"])
+                           parameter, "_neural.csv"])
 
-    my_out_file_pca = ''.join(["C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\",
-                               parameter, "_pca.csv"])
-    get_lineage(my_dt, X_train.columns, paramdict[parameter],
-                output_file=my_out_file_pca)
-    get_lineage(my_dt, X_train.columns, paramdict[parameter],
+    my_out_file_kpca = ''.join(["C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\",
+                               parameter, "_kpca.csv"])
+    get_lineage(dt_kpca, X_train.columns, paramdict[parameter],
+                output_file=my_out_file_kpca)
+    get_lineage(dt_neural, X_train.columns, paramdict[parameter],
                 output_file=my_out_file)
     '''
-    tree.export_graphviz(d_tree, out_file=dot_data,
-                         feature_names=X.columns,
-                         class_names=wet_classes,
-                         filled=True, rounded=True,
-                         special_characters=True)
-    graph = pydot.graph_from_dot_data(dot_data.getvalue())
-    graph.write_png("C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\natlfo_wetness.png")
-    # print(type(X_train.columns), type(wet_classes))
+    with open(tree_file, 'w') as f:
+        #dot_data = StringIO()
+        f = tree.export_graphviz(dt_pca, out_file=f,
+                             feature_names=X_train.columns,
+                             class_names=y_train,
+                             filled=True, rounded=True,
+                             special_characters=False)
+        graph = pydot.graph_from_dot_data(dot_data.getvalue())
+        Image(graph.create_png())
+    graph.write_png(tree_file)
     '''
