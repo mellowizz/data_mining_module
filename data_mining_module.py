@@ -249,9 +249,9 @@ if __name__ == '__main__':
         "eagle_vegetationtype": ["graminaceous_herbaceous",
                                  "herbaceous", "shrub", "tree"]
         }
-    trainingparams = {'criterion': 'gini', 'max_depth': 10,
-                      'max_features': 'auto', 'min_samples_leaf': 2,
-                      'min_samples_split': 4}
+    trainingparams = {'criterion': 'entropy', 'max_depth': 2,
+                      'max_features': 'auto', 'min_samples_leaf': 12,
+                      'min_samples_split': 2}
     homedir = os.path.expanduser('~')
     parameter = "natflo_wetness"
     table_train = "_".join(["grasslands", "train", parameter]).lower()
@@ -270,9 +270,11 @@ if __name__ == '__main__':
     report_folder = os.path.join(homedir, "test-rlp", "training_cm")
     file_name = '_'.join([parameter, "report.txt"])
     file_name_pca = '_'.join([parameter, "report_pca.txt"])
+    file_name_kpca = '_'.join([parameter, "report_kpca.txt"])
     file_name_et = '_'.join([parameter, "report_et.txt"])
     out_file = '/'.join([report_folder, file_name])
     out_file_pca = '/'.join([report_folder, file_name_pca])
+    out_file_kpca = '/'.join([report_folder, file_name_kpca])
     out_file_et = '/'.join([report_folder, file_name_et])
     train = train.fillna(0, axis=1)
     test = test.fillna(0, axis=1)
@@ -288,22 +290,31 @@ if __name__ == '__main__':
     et_params_simple = {'n_estimators': 250, 'random_state': 0, 'n_jobs': -1}
     forest = extra_tree(X_train, y_train, et_params_simple, out_file_et)
     print("Performing PCA")
-    n_components = 10
-    # pca = RandomizedPCA(n_components=n_components, whiten=True).fit(X_train)
-    pca = KernelPCA(n_components=n_components, whiten=True).fit(X_train)
+    n_components = 5
+    pca = RandomizedPCA(n_components=n_components, whiten=False).fit(X_train)
+    kpca = KernelPCA(n_components=n_components).fit(X_train)
     X_train_pca = pca.transform(X_train)
     X_test_pca = pca.transform(X_test)
+    X_train_kpca = kpca.transform(X_train)
+    X_test_kpca = kpca.transform(X_test)
     print("done in {:0.3f}".format(time() - t0))
     print("Fitting the classifier to the training set")
-    decision_tree(X_train_pca, y_train, trainingparams, out_file_pca)
+    dt_pca = decision_tree(X_train_pca, y_train, trainingparams, out_file_pca)
+    dt_kpca = decision_tree(X_train_kpca, y_train, trainingparams,
+                            out_file_kpca)
     print("done in {:0.3f}".format(time() - t0))
     my_dt = decision_tree(X_train, y_train, trainingparams, out_file)
     # new_parameters = decision_tree_neural(X_train, y_train)
+    new_parameters = decision_tree_neural(X_train_pca, y_train)
     # decision_tree(X_train, y_train, new_parameters, out_file)
     my_out_file = ''.join(["C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\",
                            parameter, ".csv"])
 
-    get_lineage(my_dt, X_train.columns, paramdict["natflo_wetness"],
+    my_out_file_pca = ''.join(["C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\",
+                               parameter, "_pca.csv"])
+    get_lineage(my_dt, X_train.columns, paramdict[parameter],
+                output_file=my_out_file_pca)
+    get_lineage(my_dt, X_train.columns, paramdict[parameter],
                 output_file=my_out_file)
     '''
     tree.export_graphviz(d_tree, out_file=dot_data,
