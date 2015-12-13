@@ -49,8 +49,6 @@ def decision_tree_neural(X_train, y_train):
         tournament_size=3,
         generations_number=10)
     gs_dtree.fit(X_train, y_train)
-    # print(gs_dtree.best_score_, gs_dtree.best_params_)
-    # best_parameters, score, _ = max(gs_dtree.best_score_, key=lambda x: x[1])
     return gs_dtree.best_params_
 
 
@@ -102,7 +100,7 @@ def generate_classification_report(clf, x_test, y_test, out_file=None):
     {}\n""".format(clf, metrics.classification_report(expected, predicted))
     confusion = """Confusion matrix:
     {}\n""".format(metrics.confusion_matrix(expected, predicted))
-    scores = cross_validation.cross_val_score(clf, X_train, y_train, cv=5,
+    scores = cross_validation.cross_val_score(clf, x_test, y_test, cv=5,
                                               n_jobs=-1)
     accuracy = "Accuracy: {:0.2f} (+/- {:0.2f})".format(scores.mean(),
                                                         scores.std() * 2)
@@ -236,6 +234,21 @@ def get_lineage(tree, feature_names, wet_classes,
         print(f)
 
 
+def evolutionary_pipeline(X, y, pipe_grid, out_file):
+    pipeline = Pipeline(steps=[
+                               ('pca', RandomizedPCA()),
+                               ('kpca', KernelPCA()),
+                               ('dt', DecisionTreeClassifier())
+                               ])
+    ev_search = EvolutionaryAlgorithmSearchCV(pipeline, pipe_grid,
+                                              scoring=None,
+                                              verbose=True,
+                                              n_jobs=-1,
+                                              population_size=5).fit(X,
+                                                                     y)
+    # generate_classification_report(ev_search, X, y, out_file)
+    return ev_search
+
 if __name__ == '__main__':
     t0 = time()
     paramdict = {
@@ -252,7 +265,7 @@ if __name__ == '__main__':
                       'max_features': 'auto', 'min_samples_leaf': 2,
                       'min_samples_split': 4}
     homedir = os.path.expanduser('~')
-    parameter = "natflo_wetness"
+    parameter = "natflo_hydromorphic"
     table_train = "_".join(["grasslands", "train", parameter]).lower()
     table_test = "grasslands_test"  # ).lower()
     DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
@@ -264,17 +277,17 @@ if __name__ == '__main__':
     train_sql = "SELECT * FROM {}".format(table_train)
     train = psql.read_sql(train_sql, engine)
     test = psql.read_sql(test_sql, engine)
-    # features, labels = df.drop([parameter], axis=1), df[parameter]
-    # all_data = psql.read_sql(all_sql, engine, index='id')
     report_folder = os.path.join(homedir, "test-rlp", "training_cm")
     file_name = '_'.join([parameter, "report.txt"])
     file_name_pca = '_'.join([parameter, "report_pca.txt"])
     file_name_kpca = '_'.join([parameter, "report_kpca.txt"])
     file_name_et = '_'.join([parameter, "report_et.txt"])
+    file_name_pipe = '_'.join([parameter, "report_pipeline.txt"])
     out_file = '/'.join([report_folder, file_name])
     out_file_pca = '/'.join([report_folder, file_name_pca])
     out_file_kpca = '/'.join([report_folder, file_name_kpca])
     out_file_et = '/'.join([report_folder, file_name_et])
+    out_file_pipe = '/'.join([report_folder, file_name_pipe])
     train = train.fillna(0, axis=1)
     test = test.fillna(0, axis=1)
     X_train = train.drop([parameter], axis=1)
@@ -297,23 +310,16 @@ if __name__ == '__main__':
         'min_samples_split': range(2, 20, 2),
         'min_samples_leaf': range(2, 20, 2)
     }
-    grid = {
+    pipe_grid = {
             'dt__criterion': ['gini', 'entropy'],
             'dt__max_features': ['auto', 'sqrt', 'log2'],
-            'dt__min_samples_split': range(2, 20, 2),
-            'dt__min_samples_leaf': range(2, 20, 2),
-            'pca__n_components': [5, 10, 15, 20]
+            'dt__min_samples_split': range(2, 18, 2),
+            'dt__min_samples_leaf': range(2, 18, 2),
+            'kpca__n_components': [5, 10],
+            'pca__n_components': [20, 25],
+            'pca__whiten': [True, False]
             }
-    pipeline = Pipeline(steps=[
-                               ('pca', RandomizedPCA()),
-                               ('dt', DecisionTreeClassifier())
-                               ])
-    clf = EvolutionaryAlgorithmSearchCV(pipeline, grid,
-                                        scoring=None,
-                                        verbose=True,
-                                        n_jobs=1,
-                                        population_size=5).fit(X_train,
-                                                               y_train)
+    ev_pipe = evolutionary_pipeline(X_train, y_train, pipe_grid, out_file_pipe)
     pca = RandomizedPCA(n_components=n_components, whiten=False).fit(X_train)
     kpca = KernelPCA(n_components=n_components).fit(X_train)
     X_train_pca = pca.transform(X_train)
