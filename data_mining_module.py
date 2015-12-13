@@ -235,11 +235,9 @@ def get_lineage(tree, feature_names, wet_classes,
 
 
 def evolutionary_pipeline(X, y, pipe_grid, out_file):
-    pipeline = Pipeline(steps=[
-                               ('pca', RandomizedPCA()),
+    pipeline = Pipeline(steps=[('pca', RandomizedPCA()),
                                ('kpca', KernelPCA()),
-                               ('dt', DecisionTreeClassifier())
-                               ])
+                               ('dt', DecisionTreeClassifier())])
     ev_search = EvolutionaryAlgorithmSearchCV(pipeline, pipe_grid,
                                               scoring=None,
                                               verbose=True,
@@ -311,14 +309,14 @@ if __name__ == '__main__':
         'min_samples_leaf': range(2, 20, 2)
     }
     pipe_grid = {
-            'dt__criterion': ['gini', 'entropy'],
-            'dt__max_features': ['auto', 'sqrt', 'log2'],
-            'dt__min_samples_split': range(2, 18, 2),
-            'dt__min_samples_leaf': range(2, 18, 2),
-            'kpca__n_components': [5, 10],
-            'pca__n_components': [20, 25],
-            'pca__whiten': [True, False]
-            }
+        'dt__criterion': ['gini', 'entropy'],
+        'dt__max_features': ['auto', 'sqrt', 'log2'],
+        'dt__min_samples_split': range(2, 18, 2),
+        'dt__min_samples_leaf': range(2, 18, 2),
+        'kpca__n_components': [5, 10],
+        'pca__n_components': [20, 25],
+        'pca__whiten': [True, False]
+        }
     ev_pipe = evolutionary_pipeline(X_train, y_train, pipe_grid, out_file_pipe)
     pca = RandomizedPCA(n_components=n_components, whiten=False).fit(X_train)
     kpca = KernelPCA(n_components=n_components).fit(X_train)
