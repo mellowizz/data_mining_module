@@ -7,7 +7,7 @@ Created on Tue Aug 18 13:56:26 2015
 """
 
 from __future__ import division
-import time
+from time import time
 import os
 import sys
 import io
@@ -15,6 +15,7 @@ from sklearn import cross_validation
 from sklearn import metrics
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.decomposition import RandomizedPCA
 from evolutionary_search import EvolutionaryAlgorithmSearchCV
 # from sklearn.pipeline import Pipeline
 from sklearn.cross_validation import StratifiedKFold
@@ -217,6 +218,7 @@ def get_lineage(tree, feature_names, wet_classes,
 
 
 if __name__ == '__main__':
+    t0 = time()
     paramdict = {
         "natflo_wetness": ["dry", "mesic", "very wet"],
         "natflo_hydromorphic": ["0", "1"],
@@ -245,6 +247,8 @@ if __name__ == '__main__':
     test = psql.read_sql(test_sql, engine)
     # features, labels = df.drop([parameter], axis=1), df[parameter]
     # all_data = psql.read_sql(all_sql, engine, index='id')
+    train = train.fillna(0, axis=1)
+    test = test.fillna(0, axis=1)
     X_train = train.drop([parameter], axis=1)
     X_test = test.drop([parameter], axis=1)
     y_train = train[parameter]
@@ -252,19 +256,14 @@ if __name__ == '__main__':
     X_train = X_train.select_dtypes(['float64'])
     X_test = X_test.select_dtypes(['float64'])
     print("Performing PCA")
-    t0 = time()pca = RandomizedPCA(n_components=n_components, whiten=True).fit(X_train)
+    n_components = 150
+    pca = RandomizedPCA(n_components=n_components, whiten=True).fit(X_train)
     X_train_pca = pca.transform(X_train)
     X_test_pca = pca.transform(X_test)
-    print("done in %0.3fs" % (time() - t0))
- 
-    '''
-    pca = PCA(n_components=5)
-    X_r = pca.fit(X_train, y_train).transform(X_train)
-    lda = LinearDiscriminantAnalysis(n_components=5)
-    X_r2 = lda.fit(X_train, y_train).transform(X_train)
-
-    plotPCALDA(X_r, X_r2, pca, lda, usage)
-    '''
+    print("done in {:0.3f}".format(time() - t0))
+    print("Fitting the classifier to the training set")
+    decision_tree(X_train_pca, y_train, paramdict)
+    print("done in {:0.3f}".format(time() - t0))
     report_folder = os.path.join(homedir, "test-rlp", "training_cm")
     file_name = '_'.join([parameter, "report.txt"])
     out_file = '/'.join([report_folder, file_name])
