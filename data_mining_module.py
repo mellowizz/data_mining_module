@@ -16,6 +16,7 @@ from sklearn import metrics
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.decomposition import RandomizedPCA
+from sklearn.decomposition import KernelPCA
 from evolutionary_search import EvolutionaryAlgorithmSearchCV
 # from sklearn.pipeline import Pipeline
 from sklearn.cross_validation import StratifiedKFold
@@ -125,14 +126,31 @@ def generate_classification_report(clf, x_test, y_test, out_file=None):
     return metrics.confusion_matrix(expected, predicted)
 
 
-def extra_tree(X, y):
-    """ Decision Tree Classifier """
-    e_tree = ExtraTreesClassifier(n_estimators=800,
-                                  max_features='sqrt',
-                                  n_jobs=-1, max_depth=None,
-                                  criterion='entropy').fit(X, y)
-    generate_classification_report(e_tree, X, y)
-    plot_feature_importance(e_tree, X)
+def extra_tree(X, y, trainingparams, out_file):
+    """ Extra Tree Classifier """
+    e_tree = ExtraTreesClassifier(**trainingparams).fit(X, y)
+    importances = e_tree.feature_importances_
+    std = np.std([tree.feature_importances_ for tree in e_tree.estimators_],
+                 axis=0)
+    indices = np.argsort(importances)[::-1]
+    # Print the feature ranking
+    print("Feature ranking:")
+
+    for f in range(20):
+        print("{} feature {} ({})".format(f + 1, indices[f],
+                                          importances[indices[f]]))
+
+    num_feat = 10
+    # Plot the feature importances of the forest
+    plt.figure()
+    plt.title("Feature importances")
+    plt.bar(range(num_feat), importances[indices][:num_feat],
+            color="r", yerr=std[indices][:num_feat], align="center")
+    plt.xticks(range(num_feat), X.columns[indices][:num_feat])
+    plt.xlim([-1, num_feat])
+    plt.xlabel("Feature")
+    plt.show()
+    generate_classification_report(e_tree, X, y, out_file)
     return e_tree
 
 
@@ -160,8 +178,10 @@ def plotPCALDA(X_r, X_r2, pca, lda, target_names, y):
     plt.title('LDA')
 
     plt.show()
+
+
 def get_lineage(tree, feature_names, wet_classes,
-                out_file="C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\default.csv"):
+                output_file="default.csv"):
     left = tree.tree_.children_left
     right = tree.tree_.children_right
     threshold = tree.tree_.threshold
@@ -171,9 +191,9 @@ def get_lineage(tree, feature_names, wet_classes,
 
     try:
         if sys.version < '3':
-            infile = io.open(out_file, 'wb')
+            infile = io.open(output_file, 'wb')
         else:
-            infile = io.open(out_file, 'wb')
+            infile = io.open(output_file, 'wb')
         with infile as tree_csv:
             idx = np.argwhere(left == -1)[:, 0]
 
@@ -229,11 +249,11 @@ if __name__ == '__main__':
         "eagle_vegetationtype": ["graminaceous_herbaceous",
                                  "herbaceous", "shrub", "tree"]
         }
-    trainingparams = {'criterion': 'entropy', 'max_depth': 4,
-                      'max_features': 'auto', 'min_samples_leaf': 8,
-                      'min_samples_split': 14}
+    trainingparams = {'criterion': 'gini', 'max_depth': 10,
+                      'max_features': 'auto', 'min_samples_leaf': 2,
+                      'min_samples_split': 4}
     homedir = os.path.expanduser('~')
-    parameter = "natflo_hydromorphic"
+    parameter = "natflo_wetness"
     table_train = "_".join(["grasslands", "train", parameter]).lower()
     table_test = "grasslands_test"  # ).lower()
     DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
@@ -250,8 +270,10 @@ if __name__ == '__main__':
     report_folder = os.path.join(homedir, "test-rlp", "training_cm")
     file_name = '_'.join([parameter, "report.txt"])
     file_name_pca = '_'.join([parameter, "report_pca.txt"])
+    file_name_et = '_'.join([parameter, "report_et.txt"])
     out_file = '/'.join([report_folder, file_name])
     out_file_pca = '/'.join([report_folder, file_name_pca])
+    out_file_et = '/'.join([report_folder, file_name_et])
     train = train.fillna(0, axis=1)
     test = test.fillna(0, axis=1)
     X_train = train.drop([parameter], axis=1)
@@ -260,9 +282,15 @@ if __name__ == '__main__':
     y_test = test[parameter]
     X_train = X_train.select_dtypes(['float64'])
     X_test = X_test.select_dtypes(['float64'])
+    ''' fit classifiers! '''
+    et_params = {'n_estimators': 800, 'max_features': 'sqrt', 'n_jobs': -1,
+                 'max_depth': None, 'criterion': 'entropy'}
+    et_params_simple = {'n_estimators': 250, 'random_state': 0, 'n_jobs': -1}
+    forest = extra_tree(X_train, y_train, et_params_simple, out_file_et)
     print("Performing PCA")
-    n_components = 8
-    pca = RandomizedPCA(n_components=n_components, whiten=True).fit(X_train)
+    n_components = 10
+    # pca = RandomizedPCA(n_components=n_components, whiten=True).fit(X_train)
+    pca = KernelPCA(n_components=n_components, whiten=True).fit(X_train)
     X_train_pca = pca.transform(X_train)
     X_test_pca = pca.transform(X_test)
     print("done in {:0.3f}".format(time() - t0))
@@ -276,7 +304,7 @@ if __name__ == '__main__':
                            parameter, ".csv"])
 
     get_lineage(my_dt, X_train.columns, paramdict["natflo_wetness"],
-                out_file=my_out_file)
+                output_file=my_out_file)
     '''
     tree.export_graphviz(d_tree, out_file=dot_data,
                          feature_names=X.columns,
