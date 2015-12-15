@@ -14,6 +14,7 @@ import pydot
 import os
 import sys
 import io
+from sklearn.cross_validation import cross_val_score
 from sklearn import cross_validation
 from sklearn import metrics
 from sklearn.ensemble import ExtraTreesClassifier
@@ -251,7 +252,30 @@ def evolutionary_pipeline(X, y, pipe_grid, out_file):
     # generate_classification_report(ev_search, X, y, out_file)
     return ev_search
 
+
+def cutoff_predict(clf, X, cutoff):
+    return (clf.predict_proba(X)[:, 1] > cutoff).astype(int)
+
+
+def custom_f1(cutoff):
+    def f1_cutoff(clf, X, y):
+        ypred = cutoff_predict(clf, X, cutoff)
+        return metrics.f1_score(y, ypred)
+
+def plot_unused():
+    for cutoff in np.arange(0.1, 0.9, 0.1):
+        clf = ExtraTreesClassifier(n_estimators=15)
+        validated = cross_val_score(clf, X_train, y_train, cv=10,
+                                    scoring=custom_f1(cutoff))
+
+    plt.boxplot(scores) #, names=np.arange(0.1, 0.9, 0.1))
+    plt.title('F scores for each tree')
+    plt.xlabel('each cut off value')
+    plt.ylabel('custom F score')
+    plt.show()
+
 if __name__ == '__main__':
+    scores = []
     t0 = time()
     paramdict = {
         "natflo_wetness": ["dry", "mesic", "very wet"],
@@ -264,14 +288,14 @@ if __name__ == '__main__':
                                  "herbaceous", "shrub", "tree"]
         }
     homedir = os.path.expanduser('~')
-    parameter = "natflo_usage_intensity"
+    parameter = "natflo_hydromorphic"
     table_train = "_".join(["grasslands", "train", parameter]).lower()
     table_test = "grasslands_test"  # ).lower()
     DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
     engine = create_engine(DSN)
     conn = engine.connect()
-    all_sql = "SELECT * FROM {} UNION ALL SELECT * FROM {}".format(table_train,
-                                                                   table_test)
+    #all_sql = "SELECT * FROM {} UNION ALL SELECT * FROM {}".format(table_train,
+    #                                                               table_test)
     test_sql = "SELECT * FROM {}".format(table_test)
     train_sql = "SELECT * FROM {}".format(table_train)
     train = psql.read_sql(train_sql, engine)
@@ -299,43 +323,47 @@ if __name__ == '__main__':
     X_train = X_train.select_dtypes(['float64'])
     X_test = X_test.select_dtypes(['float64'])
     ''' fit classifiers! '''
-    trainingparams = {'criterion': 'gini', 'max_depth': 10,
-                      'max_features': 'auto', 'min_samples_leaf': 16,
-                      'min_samples_split': 14}
+    trainingparams = {'criterion': 'gini', 'max_depth': 8,
+                      'max_features': 'auto', 'min_samples_leaf': 2,
+                      'min_samples_split': 8, 'class_weight': 'balanced'}
     et_params = {'n_estimators': 800, 'max_features': 'sqrt', 'n_jobs': -1,
-                 'max_depth': None, 'criterion': 'entropy'}
+                 'max_depth': None, 'criterion': 'entropy',
+                 'class_weight': 'balanced'}
     et_params_simple = {'n_estimators': 250, 'random_state': 0, 'n_jobs': -1}
     forest = extra_tree(X_train, y_train, et_params_simple, out_file_et)
-    print("Performing PCA")
-    n_components = 5
+
     parameters = {
         'max_features': ['auto', 'sqrt', 'log2'],
         'max_depth': range(2, 12, 2),
         'criterion': ['gini', 'entropy'],
         'min_samples_split': range(2, 20, 2),
-        'min_samples_leaf': range(2, 20, 2)
+        'min_samples_leaf': range(2, 20, 2,),
+        'class_weight': 'balanced'
     }
     pipe_grid = {
         'dt__criterion': ['gini', 'entropy'],
         'dt__max_features': ['auto', 'sqrt', 'log2'],
         'dt__min_samples_split': range(2, 18, 2),
         'dt__min_samples_leaf': range(2, 18, 2),
-        'kpca__n_components': [10, 20],
-        'pca__n_components': [10, 20],
-        'pca__whiten': [True, False]
+        'dt__class_weight': ['balanced', None],
+        'kpca__n_components': [10, 20, 30, 40]
+         #'pca__n_components': [20, 30],
+         #'pca__whiten': [True, False]
         }
     # print(X_train.dtypes)
     # ev_pipe = evolutionary_pipeline(X_train, y_train, pipe_grid, out_file_pipe)
-    pca = RandomizedPCA(n_components=n_components, whiten=False).fit(X_train)
+    print("Performing Kernel PCA")
+    n_components = 10
+    #pca = RandomizedPCA(n_components=n_components, whiten=False).fit(X_train)
     kpca = KernelPCA(n_components=n_components).fit(X_train)
-    X_train_pca = pca.transform(X_train)
-    X_test_pca = pca.transform(X_test)
+    #X_train_pca = pca.transform(X_train)
+    #X_test_pca = pca.transform(X_test)
     print("Done fitting Randomized PCA in {:0.3f}".format(time() - t0))
     X_train_kpca = kpca.transform(X_train)
     X_test_kpca = kpca.transform(X_test)
     print("Done fitting Kernel PCA in {:0.3f}".format(time() - t0))
-    print("*** DT with Randomized PCA ***")
-    dt_pca = decision_tree(X_train_pca, y_train, trainingparams, out_file_pca)
+    #print("*** DT with Randomized PCA ***")
+    dt = decision_tree(X_train, y_train, trainingparams, out_file)
     print("*** DT with Kernel PCA transform: ***")
     dt_kpca = decision_tree(X_train_kpca, y_train, trainingparams,
                             out_file_kpca)
@@ -343,22 +371,26 @@ if __name__ == '__main__':
     print("*** Using neural parameters to train DT:")
     dt_neural = decision_tree(X_train, y_train, neural_parameters, out_file)
     print("*** Using neural parameters to train DT WITH PCA:")
-    dt_neural_pca = decision_tree(X_train, y_train, neural_parameters,
+    dt_neural_kpca = decision_tree(X_train_kpca, y_train, neural_parameters,
                                   out_file_neural_pca)
-    # print("*** Randomized PCA ***")
-    # parameters_pca = decision_tree_neural(X_train_pca, y_train)
-    # print("*** Kernel PCA ***")
-    # parameters_kpca = decision_tree_neural(X_train_kpca, y_train)
-    # decision_tree(X_train, y_train, new_parameters, out_file)
-    my_out_file = ''.join(["C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\",
-                           parameter, "_neural.csv"])
+    print("*** Randomized PCA Evolutionary Search***")
+    #parameters_pca = decision_tree_neural(X_train_pca, y_train)
+    print("*** Kernel PCA run with Evolutionary Search***")
+    parameters_kpca = decision_tree_neural(X_train_kpca, y_train)
+    # decision_tree(X_train, y_train, dt_neural_pca, out_file)
 
-    my_out_file_kpca = ''.join(["C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\",
+    my_out_file = ''.join(["C:\\Users\\Moran\\test-rlp\\sci-kit_rules\\",
+                              parameter, ".csv"])
+    my_out_file_kpca = ''.join([homedir, "\\test-rlp\\sci-kit_rules\\",
                                parameter, "_kpca.csv"])
+    my_out_file_ev = ''.join([homedir, "\\test-rlp\\sci-kit_rules\\",
+                              parameter, "_kpca_neural.csv"])
+    get_lineage(dt_kpca, X_train.columns, paramdict[parameter],
+                output_file=my_out_file)
     get_lineage(dt_kpca, X_train.columns, paramdict[parameter],
                 output_file=my_out_file_kpca)
-    get_lineage(dt_neural, X_train.columns, paramdict[parameter],
-                output_file=my_out_file)
+    get_lineage(dt_neural_kpca, X_train.columns, paramdict[parameter],
+                output_file=my_out_file_ev)
     '''
     with open(tree_file, 'w') as f:
         #dot_data = StringIO()
