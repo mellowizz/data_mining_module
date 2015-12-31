@@ -60,7 +60,7 @@ if __name__ == '__main__':
                                                                ".sql")])
         master_table = "ut_saarburg_mad_all"
         test_table = "grasslands_test"
-        class_name = csv_name.strip(".csv")
+        class_name = csv_name.split(".csv")[0]
         with io.open(sql_rules_out, 'w') as sql_rule:
             for key, values in rules.items():
                 sql_rule.write("--{}\n".format(key))
@@ -72,23 +72,25 @@ if __name__ == '__main__':
                 sql_rule.write("{}\n".format(') or \n('.join(mylist)))
                 sql_rule.write(")")
                 sql_rule.write("\n")
-        '''
         with engine.begin() as conn:
-            # make new table
-            mylist = [' and '.join(i) for i in values]
-            union_rule = "{}\n".format(') or \n('.join(mylist))
-            conn.execute("DROP TABLE IF EXISTS results_{}".format(class_name))
-            conn.execute("""CREATE TABLE results_{0} (
-                         id bigint, {0} VARCHAR(25),
-                         classified VARCHAR(25),
-                         PRIMARY KEY(id)))""".format(class_name))
-            conn.execute("""SELECT id, {0}, FROM {1} WHERE id in (
-                SELECT id FROM {2} WHERE ({3})\n""".format(class_name,
-                                                      master_table,
-                                                      test_table,
-                sql_rule.write(")")
-                sql_rule.write("\n")
-            valid_class = conn.execute("""SELECT id, {}
-                                       FROM {}""".format(class_name,
-                                                         master_table))
-        '''
+            for key, values in rules.items():
+                # make new table
+                mylist = [' and '.join(i) for i in values]
+                union_rule = "{}\n".format(') or \n('.join(mylist))
+                print("-- **** {0} values: {1} ****".format(class_name, key))
+                conn.execute("""DROP TABLE
+                                IF EXISTS results_{}""".format(class_name))
+                conn.execute("""CREATE TABLE results_{0} (
+                            id bigint, {0} VARCHAR(25),
+                            classified VARCHAR(25),
+                            PRIMARY KEY(id))""".format(class_name))
+                sql = """SELECT id, {0} FROM {1} WHERE id in (
+                SELECT id FROM {2} WHERE ({3}))\n""".format(class_name,
+                                                            master_table,
+                                                            test_table,
+                                                            union_rule)
+                result = conn.execute(sql)
+                for row in result:
+                    print("{0},{1},{2}".format(row['id'],
+                                               row[class_name],
+                                               key))
