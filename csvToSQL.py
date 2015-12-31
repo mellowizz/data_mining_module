@@ -73,6 +73,7 @@ if __name__ == '__main__':
                 sql_rule.write(")")
                 sql_rule.write("\n")
         with engine.begin() as conn:
+            values_dict = dict()
             for key, values in rules.items():
                 # make new table
                 mylist = [' and '.join(i) for i in values]
@@ -89,8 +90,45 @@ if __name__ == '__main__':
                                                             master_table,
                                                             test_table,
                                                             union_rule)
-                result = conn.execute(sql)
+                if len(values_dict) == 0:
+                    values_dict = dict(conn.execute(sql).fetchall())
+                else:
+                    values_dict.update(conn.execute(sql).fetchall())
+                print("values_dict: {}".format(values_dict.keys()))
+                for myid, value in values_dict.items():
+                    insert = """INSERT INTO results_{0}
+                                (id, {0}, classified)
+                                VALUES (%s, %s, %s)""".format(class_name)
+                    print(insert)
+                    print(myid)
+                    print(value)
+                    conn.execute(insert, (myid,
+                                          value,
+                                          key))
+                # values_dict = (conn.execute(sql).fetchall())
+                # print(result.keys())
+                # print(result.values())
+                # if id already in dict, delete entry?
+                # print(result)
+                '''
                 for row in result:
-                    print("{0},{1},{2}".format(row['id'],
-                                               row[class_name],
-                                               key))
+                    # (id, {1}, classified)
+                    insert = """INSERT INTO results_{0}
+                                (id, {0}, classified)
+                                VALUES (%s, %s, %s)""".format(class_name)
+                    (class_name,
+                                                        class_name,
+                                                        row['id'],
+                                                        row[class_name],
+                                                        key)
+                    print(insert)
+                    conn.execute(insert, (row['id'],
+                                          row[class_name],
+                                          key))
+                    conn.commit()
+                    print(insert)
+
+                    # print("{0},{1},{2}".format(row['id'],
+                    #                           row[class_name],
+                    #                           key))
+                '''
