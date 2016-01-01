@@ -1,3 +1,4 @@
+#!/usr/bin/python2
 # -*- coding: utf-8 -*-
 """
 Created on 04.06.2015
@@ -33,7 +34,7 @@ def plot_confusion_matrix(cm, title='Confusion matrix', cmap=plt.cm.Blues):
 
 if __name__ == '__main__':
     paramdict = {
-        "natflo_wetness": ["dry", "mesic", "very wet"],
+        "natflo_wetness": ["dry", "mesic", "very_wet"],
         "natflo_depression": ["0", "1"],
         "natflo_hydromorphic": ["0", "1"],
         "natflo_immature_soil": ["0", "1"],
@@ -43,7 +44,7 @@ if __name__ == '__main__':
         "eagle_vegetationtype": ["graminaceous_herbaceous",
                                  "herbaceous", "shrub", "tree"]
     }
-    parameter = "natflo_wetness"
+    parameter = "natflo_usage"
     DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
     engine = create_engine(DSN)
     conn = engine.connect()
@@ -52,8 +53,12 @@ if __name__ == '__main__':
                         FROM {}""".format(parameter,
                                           '_'.join(["results", parameter]))
         mydf = psql.read_sql(sql_query, engine)
-        y_true = mydf[parameter]
-        y_pred = mydf["classified"]
+        y_true = mydf[parameter].apply(str)
+        y_pred = mydf["classified"].apply(str)
+        print(y_true)
+        print(y_pred)
+        print(y_true.dtypes)
+        print(y_pred.dtypes)
         print(confusion_matrix(y_true, y_pred, labels=paramdict[parameter]))
         print(classification_report(y_true, y_pred))
         # Compute confusion matrix

@@ -37,6 +37,21 @@ engine = create_engine(DSN)
 # conn = engine.connect()
 
 
+def filter_dict(dict1, dict2):
+    '''
+    Takes two dictionaries and deletes matching records;
+    Dict1 is the main dictionary;
+    Dict2 is the secondary dictionary.
+    RETURNS: dictionary Dict1 of
+    unique values.
+    '''
+
+    for key in dict2.keys():
+            if key in dict1.keys():
+                del dict1[key]
+                del dict2[key]
+    return dict1  # [dict1, dict2]
+
 if __name__ == '__main__':
     homedir = path.expanduser('~')
     scikit_folder = path.join(homedir, "test-rlp", "sci-kit_rules")
@@ -93,15 +108,14 @@ if __name__ == '__main__':
                 if len(values_dict) == 0:
                     values_dict = dict(conn.execute(sql).fetchall())
                 else:
-                    values_dict.update(conn.execute(sql).fetchall())
-                print("values_dict: {}".format(values_dict.keys()))
+                    temp = dict(conn.execute(sql).fetchall())
+                    values_dict = dict(filter_dict(values_dict, temp))
+
+                # print("values_dict: {}".format(values_dict.keys()))
                 for myid, value in values_dict.items():
                     insert = """INSERT INTO results_{0}
                                 (id, {0}, classified)
                                 VALUES (%s, %s, %s)""".format(class_name)
-                    print(insert)
-                    print(myid)
-                    print(value)
                     conn.execute(insert, (myid,
                                           value,
                                           key))
