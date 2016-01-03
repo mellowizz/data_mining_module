@@ -57,6 +57,8 @@ if __name__ == '__main__':
     scikit_folder = path.join(homedir, "test-rlp", "sci-kit_rules")
     sql_folder = path.join(homedir, "test-rlp", "sql_rules")
     for csv_name, csv_path in listcsvs(scikit_folder):
+        sql_rules_out = "/".join([sql_folder, csv_name.replace(".csv",
+                                                               ".sql")])
         rules = defaultdict(list)
         with io.open(csv_path) as csvfile:
             reader = csv.reader(csvfile)
@@ -69,26 +71,22 @@ if __name__ == '__main__':
                     rules[row[0]].append(list(ruleset))
                     ruleset.clear()
                 else:
+                    # print ("appending: {} ".format(row))
                     ruleset.append("{} {} {}".format(*row))
                 # print("row: {}".format(row))
-        sql_rules_out = "/".join([sql_folder, csv_name.replace(".csv",
-                                                               ".sql")])
-        master_table = "ut_saarburg_mad_all"
         test_table = "grasslands_test"
         class_name = csv_name.split(".csv")[0]
         with io.open(sql_rules_out, 'w') as sql_rule:
             for key, values in rules.items():
                 sql_rule.write("--{}\n".format(key))
-                sql_rule.write("SELECT id, {0},".format(class_name))
-                sql_rule.write("FROM {} WHERE id in (".format(master_table))
-                sql_rule.write("SELECT id\n")
+                sql_rule.write("SELECT id, {0}".format(class_name))
                 sql_rule.write("FROM {} WHERE (\n".format(test_table))
                 mylist = [' and '.join(i) for i in values]
                 sql_rule.write("{}\n".format(') or \n('.join(mylist)))
                 sql_rule.write(")")
                 sql_rule.write("\n")
         with engine.begin() as conn:
-            values_dict = dict()
+            sql_query = []
             for key, values in rules.items():
                 # make new table
                 mylist = [' and '.join(i) for i in values]
@@ -100,49 +98,32 @@ if __name__ == '__main__':
                             id bigint, {0} VARCHAR(25),
                             classified VARCHAR(25),
                             PRIMARY KEY(id))""".format(class_name))
-                sql = """SELECT id, {0} FROM {1} WHERE id in (
-                SELECT id FROM {2} WHERE ({3}))\n""".format(class_name,
-                                                            master_table,
-                                                            test_table,
-                                                            union_rule)
-                if len(values_dict) == 0:
-                    values_dict = dict(conn.execute(sql).fetchall())
-                else:
-                    temp = dict(conn.execute(sql).fetchall())
-                    values_dict = dict(filter_dict(values_dict, temp))
-
-                # print("values_dict: {}".format(values_dict.keys()))
-                for myid, value in values_dict.items():
-                    insert = """INSERT INTO results_{0}
-                                (id, {0}, classified)
-                                VALUES (%s, %s, %s)""".format(class_name)
-                    conn.execute(insert, (myid,
-                                          value,
-                                          key))
-                # values_dict = (conn.execute(sql).fetchall())
-                # print(result.keys())
-                # print(result.values())
-                # if id already in dict, delete entry?
-                # print(result)
-                '''
-                for row in result:
-                    # (id, {1}, classified)
-                    insert = """INSERT INTO results_{0}
-                                (id, {0}, classified)
-                                VALUES (%s, %s, %s)""".format(class_name)
-                    (class_name,
-                                                        class_name,
-                                                        row['id'],
-                                                        row[class_name],
-                                                        key)
-                    print(insert)
-                    conn.execute(insert, (row['id'],
-                                          row[class_name],
-                                          key))
-                    conn.commit()
-                    print(insert)
-
-                    # print("{0},{1},{2}".format(row['id'],
-                    #                           row[class_name],
-                    #                           key))
-                '''
+                sql_query.append("""SELECT id, {0}, \'{1}\' as classified
+                         FROM {2}
+                         WHERE ({3})\n""".format(class_name,
+                                                 key,
+                                                 test_table,
+                                                 union_rule))
+            sql = ' UNION '.join(sql_query)
+            values_list = conn.execute(sql).fetchall()
+            for row in values_list:
+                insert = """INSERT INTO results_{0}
+                            (id, {0}, classified)
+                            VALUES (%s, %s,
+                            %s)""".format(class_name)
+                # print(insert)
+                conn.execute(insert, (row[0], row[1], row[2]))
+                # row[0],
+                #                        value,
+                #                        key))
+            '''
+            for key in rules.items():
+                #for myid, value in values_dict.items():
+                insert = """INSERT INTO results_{0}
+                            (id, {0}, classified)
+                            VALUES (%{id}s, %{class_name}s,
+                            %{classified}s)""".format(class_name)
+                conn.execute(insert, (**values_dictmyid,
+                                        value,
+                                        key))
+            '''

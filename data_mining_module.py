@@ -34,14 +34,12 @@ import matplotlib.pyplot as plt
 # from sklearn.decomposition import PCA
 
 paramdict = {
-    "natflo_wetness": ["dry", "mesic", "very wet"],
     "natflo_hydromorphic": ["0", "1"],
     "natflo_immature_soil": ["0", "1"],
     "natflo_species_richness": ["species_poor", "species_rich"],
     "natflo_usage": ["grazing", "mowing", "orchards", "vineyards"],
     "natflo_usage_intensity": ["high", "medium", "low"],
-    "eagle_vegetationtype": ["graminaceous_herbaceous",
-                             "herbaceous", "shrub", "tree"]
+    "natflo_wetness": ["dry", "mesic", "very_wet"],
     }
 
 trainingparams = {'criterion': 'gini', 'max_depth': 8,
@@ -55,13 +53,13 @@ parameters = {'max_features': ['auto', 'sqrt', 'log2'],
               'criterion': ['gini', 'entropy'],
               'min_samples_split': range(2, 20, 2),
               'min_samples_leaf': range(2, 20, 2,),
-              'class_weight': 'balanced'
+              'class_weight': ['balanced']
               }
 DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
 engine = create_engine(DSN)
 conn = engine.connect()
 # get data
-parameter = "natflo_usage_intensity"
+parameter = "natflo_hydromorphic"
 table_train = "_".join(["grasslands", "train", parameter]).lower()
 table_test = "grasslands_test"
 test_sql = "SELECT * FROM {}".format(table_test)
@@ -76,7 +74,8 @@ def decision_tree_neural(X_train, y_train):
         'max_depth': range(2, 12, 2),
         'criterion': ['gini', 'entropy'],
         'min_samples_split': range(2, 20, 2),
-        'min_samples_leaf': range(2, 20, 2)
+        'min_samples_leaf': range(2, 20, 2),
+        'class_weight': ['balanced']
     }
     gs_dtree = EvolutionaryAlgorithmSearchCV(
         estimator=DecisionTreeClassifier(),
@@ -187,7 +186,7 @@ def extra_tree(X, y, trainingparams, out_file, num_feat=10):
     plt.xlabel("Feature")
     plt.show()
     generate_classification_report(e_tree, X, y, out_file)
-    return e_tree, X.columns[indices]
+    return e_tree, X.columns[indices][:num_feat]
 
 
 def decision_tree(X, y, trainingparam, out_file):
@@ -312,19 +311,22 @@ if __name__ == '__main__':
     dt = decision_tree(X_train_reduced, y_train, trainingparams,
                        out_file)
     print("Done fitting DT with selected features {:0.3f}".format(time() - t0))
-    n_components = 10
-    # neural_parameters = decision_tree_neural(X_train, y_train)
-    # print("*** Using neural parameters to train DT:")
-    # dt_neural = decision_tree(X_train, y_train, neural_parameters, out_file)
+    neural_parameters = decision_tree_neural(X_train, y_train)
+    print("*** Using neural parameters to train DT:")
+    dt_neural = decision_tree(X_train, y_train, neural_parameters, out_file)
+    ''' files '''
     my_out_file = ''.join([parameter, ".csv"])
-
+    my_out_file_all = ''.join([parameter, "_all.csv"])
+    my_out_file_neural = ''.join([parameter, "_neural.csv"])
     # my_out_file_neural = ''.join([parameter, "_neural.csv"])
     # my_out_file_kpca = ''.join([scikit_folder, '\\', parameter, "_kpca.csv"])
     # save regular DT rules
     get_lineage(dt, X_train.columns, paramdict[parameter],
                 output_file="/".join([scikit_folder, my_out_file]))
-    # get_lineage(dt_neural, X_train.columns, paramdict[parameter],
-    #             output_file="/".join([scikit_folder, my_out_file_neural]))
+    get_lineage(dt_all, X_train.columns, paramdict[parameter],
+                output_file="/".join([scikit_folder, my_out_file_all]))
+    get_lineage(dt_neural, X_train.columns, paramdict[parameter],
+                output_file="/".join([scikit_folder, my_out_file_neural]))
     # save KPCA DT rules
     # get_lineage(dt_kpca, X_train.columns, paramdict[parameter],
     #            output_file=my_out_file_kpca)
