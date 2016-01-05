@@ -1,10 +1,5 @@
 #!/usr/bin/python2
 # -*- coding: utf-8 -*-
-"""
-Created on 04.06.2015
-
-@author: Moran
-"""
 from __future__ import division
 from sqlalchemy import create_engine
 from os import path
@@ -46,11 +41,26 @@ if __name__ == '__main__':
     engine = create_engine(DSN)
     conn = engine.connect()
     try:
-        sql_query = """SELECT {}, classified
-                        FROM {}""".format(parameter,
-                                          '_'.join(["results", parameter]))
+
+        sql_query = '''select substr(ut_saarburg_mad_all.eunis,1,2) as eunis,
+        'E2' as classified
+            from ut_saarburg_mad_all
+            where id in (
+                select id from results_natflo_wetness
+                where classified = 'mesic')
+                AND
+                id in ( select id
+                from results_natflo_usage)
+                AND
+                id in (select ndsm_nm_id
+                from ndsm_saarburg
+                where ndsm_nm_max < 1)
+        '''
+
         mydf = psql.read_sql(sql_query, engine)
-        y_true = mydf[parameter].apply(str)
+        print(mydf.columns)
+        print(mydf.head())
+        y_true = mydf["eunis"].apply(str)
         y_pred = mydf["classified"].apply(str)
         print(y_true)
         print(y_pred)
