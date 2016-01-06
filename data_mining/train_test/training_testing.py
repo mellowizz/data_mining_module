@@ -1,3 +1,4 @@
+#!/usr/bin/python2
 '''
 Created on 11.12.2015
 
@@ -6,8 +7,6 @@ Created on 11.12.2015
 from __future__ import division
 from sqlalchemy import create_engine
 import pandas.io.sql as psql
-from sklearn.cross_validation import train_test_split
-import pandas as pd
 import os
 
 
@@ -35,8 +34,8 @@ def training(engine, csv_folder, paramdict, parameter='all',
     a_df = a_df.ix[:, cols]
     out_table = '_'.join([table_name, parameter])
     a_df.to_sql(out_table, engine, if_exists='replace')
-    conn = engine.connect()
-    conn.execute("vacuum analyze {}".format(out_table))
+    # conn = engine.connect()
+    # conn.execute("vacuum analyze {}".format(out_table))
     '''
     file_path = os.path.join(csv_folder, "{0}_seath.csv".format(out_table))
     a_df.astype(object)
@@ -59,7 +58,7 @@ try:
     # PARAM = "natfddlo_wetness"
     engine = create_engine(DSN)
     conn = engine.connect()
-    table_name = 'saarburg_grasslands'
+    #table_name = 'saarburg_tr'
     labels = paramdict.keys()
     print(labels)
     for param in paramdict:

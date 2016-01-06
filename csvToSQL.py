@@ -91,7 +91,7 @@ if __name__ == '__main__':
                 # make new table
                 mylist = [' and '.join(i) for i in values]
                 union_rule = "{}\n".format(') or \n('.join(mylist))
-                print("-- **** {0} values: {1} ****".format(class_name, key))
+                # print("-- **** {0} values: {1} ****".format(class_name, key))
                 conn.execute("""DROP TABLE
                                 IF EXISTS results_{}""".format(class_name))
                 conn.execute("""CREATE TABLE results_{0} (
