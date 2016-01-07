@@ -41,7 +41,7 @@ if __name__ == '__main__':
         "natflo_usage_intensity": ["high", "medium", "low"],
         "natflo_wetness": ["dry", "mesic", "very_wet"]
     }
-    parameter = "natflo_usage"
+    parameter = "natflo_wetness"
     DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
     engine = create_engine(DSN)
     conn = engine.connect()

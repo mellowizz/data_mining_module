@@ -183,11 +183,11 @@ if __name__ == '__main__':
     for i, j in subdirs(homedir):
        homesubdirs[i] = j
     output_folder = ''
-    print(homesubdirs.keys())
+    # print(homesubdirs.keys())
     try:
         if 'tubCloud' in homesubdirs:
             output_folder = homesubdirs['tubCloud']
-        elif 'ownCloud': 
+        elif 'ownCloud' in homesubdirs: 
             output_folder = homesubdirs['ownCloud']
         sql_query = mesic_meadows #dry  ' UNION '.join([dry, mesic, very_wet])
         mydf = psql.read_sql(sql_query, engine)
@@ -196,6 +196,8 @@ if __name__ == '__main__':
         output_folder = osjoin(homedir, output_folder)
         my_matrix = ''.join(['classification', '_e2.1',
                              '.txt'])
+        my_matrix = osjoin(output_folder, my_matrix)
+        print("Saving to: {}".format(my_matrix))
         cm = confusion_matrix(y_true, y_pred)
         # labels=paramdict[parameter])
         print(cm)
