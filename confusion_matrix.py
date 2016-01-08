@@ -6,19 +6,29 @@ Created on 04.06.2015
 @author: Moran
 """
 from __future__ import division
+from __future__ import print_function
+try:
+    from os import scandir
+except:
+    from scandir import scandir
 from sqlalchemy import create_engine
 from os import path
 from sklearn.metrics.classification import confusion_matrix
+from collections import defaultdict
 # from sklearn.metrics.classification import precision_score, recall_score
 import pandas.io.sql as psql
 from sklearn.metrics import classification_report
 import matplotlib.pyplot as plt
 import numpy as np
+from os.path import join as osjoin
+from os.path import expanduser
 
 
-def create_save_file(var_fname):
-    return path.join(r'c:\Users\Moran\test-rlp\accuracy_assessments',
-                     var_fname)
+def subdirs(path):
+    """Yield directory names not starting with '.' under given path."""
+    for entry in scandir(path):
+        if not entry.name.startswith('.') and entry.is_dir():
+            yield entry.name, entry.path
 
 
 def plot_confusion_matrix(cm, title='Confusion matrix', cmap=plt.cm.Blues):
@@ -41,30 +51,46 @@ if __name__ == '__main__':
         "natflo_usage_intensity": ["high", "medium", "low"],
         "natflo_wetness": ["dry", "mesic", "very_wet"]
     }
-    parameter = "natflo_wetness"
+    seath_rule_folder = "seath_rules"
     DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
     engine = create_engine(DSN)
     conn = engine.connect()
+    algorithmn = "" # "" for dt or seath
+    homedir = expanduser('~')
+    homesubdirs = defaultdict() 
+    for i, j in subdirs(homedir):
+       homesubdirs[i] = j
+       
     try:
-        sql_query = """SELECT {}, classified
-                        FROM {}""".format(parameter,
-                                          '_'.join(["results", parameter]))
-        mydf = psql.read_sql(sql_query, engine)
-        y_true = mydf[parameter].apply(str)
-        y_pred = mydf["classified"].apply(str)
-        print(y_true)
-        print(y_pred)
-        print(y_true.dtypes)
-        print(y_pred.dtypes)
-        print(confusion_matrix(y_true, y_pred, labels=paramdict[parameter]))
-        print(classification_report(y_true, y_pred))
-        # Compute confusion matrix
-        cm = confusion_matrix(y_true, y_pred)
-        np.set_printoptions(precision=2)
-        print('Confusion matrix, without normalization')
-        print(cm)
-        plt.figure()
-        plot_confusion_matrix(cm)
-        plt.show()
+        if 'tubCloud' in homesubdirs:
+            output_folder = homesubdirs['tubCloud']
+        elif 'ownCloud' in homesubdirs: 
+            output_folder = homesubdirs['ownCloud']
+        seath_rule_folder = osjoin(output_folder, seath_rule_folder)
+        seath_rules = [i for i, _ in subdirs(seath_rule_folder)]
+        print("seath rules: {}".format(seath_rules))
+        output_folder = osjoin(output_folder, "accuracy_assessments")
+        for parameter in seath_rules:
+            if algorithmn == '':
+                base_rulename = parameter
+            else:
+                base_rulename = "_".join([parameter, algorithmn])
+            results_tbl = '_'.join(["results", base_rulename])
+            sql_query = """SELECT {}, classified
+                            FROM {}""".format(parameter, results_tbl)
+            mydf = psql.read_sql(sql_query, engine)
+            if " " in mydf[parameter]:
+                mydf[parameter] = re.sub(r"[\\s]", "_", my_df[parameter])
+            y_true = mydf[parameter].apply(str)
+            y_pred = mydf["classified"].apply(str)
+            #print(confusion_matrix(y_true, y_pred))
+            #, labels=paramdict[parameter]))
+            confusion_out = ''.join([base_rulename, ".txt"])
+            confusion_out = osjoin(output_folder, confusion_out)
+            print("confusion matrix located: {}".format(confusion_out))
+            with open(confusion_out, 'w+') as f:
+                f.write(classification_report(y_true, y_pred))
+    except IOError as myerror:
+        print(myerror)
     except BaseException as e:
         print("Sorry: {}".format(e))
