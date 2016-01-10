@@ -18,13 +18,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import jaccard_similarity_score
 from os.path import expanduser
-# import io
+import sys
+
 
 def subdirs(path):
     """Yield directory names not starting with '.' under given path."""
     for entry in scandir(path):
         if not entry.name.startswith('.') and entry.is_dir():
             yield entry.name, entry.path
+
 
 def create_save_file(var_fname):
     return path.join(r'c:\Users\Moran\test-rlp\accuracy_assessments',
@@ -51,40 +53,39 @@ if __name__ == '__main__':
         "natflo_usage": ["grazing", "mowing", "orchards", "vineyards"],
         "natflo_usage_intensity": ["high", "medium", "low"],
         "natflo_wetness": ["dry", "mesic", "very_wet"]
-        #"eunis": ['D5', 'E1', 'E2', 'E3', 'E5', 'FA', 'F3', 'F4', 'FB', 'G1', 
-        #          'G5', 'H2', 'H3', 'I1', 'J1', 'Y.']
     }
     parameter = "eunis"
     DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
     engine = create_engine(DSN)
     conn = engine.connect()
     homedir = expanduser('~')
-    homesubdirs = defaultdict() 
+    homesubdirs = defaultdict()
     for i, j in subdirs(homedir):
-       homesubdirs[i] = j
+        homesubdirs[i] = j
     output_folder = ''
     # print(homesubdirs.keys())
     try:
         if 'tubCloud' in homesubdirs:
             output_folder = homesubdirs['tubCloud']
-        elif 'ownCloud' in homesubdirs: 
+        elif 'ownCloud' in homesubdirs:
             output_folder = homesubdirs['ownCloud']
-        
-        currtable = 'seath_wet' 
-        seath = {'dry': 'E1', 'mesic': 'E2',
-                 'wet': 'E3', 'mytable': currtable}
-        sql_query = '''select result.id, 
+
+        currtable = sys.argv[1]
+        wetness = currtable.split('_')[1]
+        desc_eunis = {'dry': 'E1', 'mesic': 'E2',
+                      'wet': 'E3', 'mytable': currtable}
+        sql_query = '''select result.id,
                         substr(eunis,1,2) as eunis,
-                        '{wet}' as classified
+                        '{mywet}' as classified
                        from {mytable} as result,
                         ut_saarburg_mad_all as ut
                        where result.id = ut.id
-                    '''.format(**seath)
+                    '''.format(mywet=desc_eunis[wetness], **desc_eunis)
         print("sql: {}".format(sql_query))
- 
+
         mydf = psql.read_sql(sql_query, engine)
-        y_true = mydf[parameter] #.apply(str)
-        y_pred = mydf["classified"] #.apply(str)
+        y_true = mydf[parameter]   # .apply(str)
+        y_pred = mydf["classified"]  # .apply(str)
         output_folder = osjoin(homedir, output_folder)
         my_matrix = ''.join([currtable, '.txt'])
         my_matrix = osjoin(output_folder, my_matrix)
