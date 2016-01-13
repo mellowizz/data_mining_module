@@ -19,6 +19,7 @@ from sklearn import cross_validation
 from sklearn import metrics
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.tree import DecisionTreeClassifier
+import sklearn.tree as tree
 # from sklearn.decomposition import RandomizedPCA
 from sklearn.decomposition import KernelPCA
 from evolutionary_search import EvolutionaryAlgorithmSearchCV
@@ -27,7 +28,6 @@ from sklearn.cross_validation import StratifiedKFold
 import pandas.io.sql as psql
 from sqlalchemy import create_engine
 import numpy as np
-# from sklearn.externals.six import StringIO
 # import pydot
 # from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 import matplotlib.pyplot as plt
@@ -55,17 +55,6 @@ parameters = {'max_features': ['auto', 'sqrt', 'log2'],
               'min_samples_leaf': range(2, 20, 2,),
               'class_weight': ['balanced']
               }
-DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
-engine = create_engine(DSN)
-conn = engine.connect()
-# get data
-parameter = "natflo_hydromorphic"
-table_train = "_".join(["grasslands", "train", parameter]).lower()
-table_test = "grasslands_test"
-test_sql = "SELECT * FROM {}".format(table_test)
-train_sql = "SELECT * FROM {}".format(table_train)
-train = psql.read_sql(train_sql, engine)
-test = psql.read_sql(test_sql, engine)
 
 
 def decision_tree_neural(X_train, y_train):
@@ -167,8 +156,8 @@ def extra_tree(X, y, trainingparams, out_file, num_feat=10):
     """ Extra Tree Classifier """
     e_tree = ExtraTreesClassifier(**trainingparams).fit(X, y)
     importances = e_tree.feature_importances_
-    std = np.std([tree.feature_importances_ for tree in e_tree.estimators_],
-                 axis=0)
+    np.std([tree.feature_importances_ for tree in e_tree.estimators_],
+           axis=0)
     indices = np.argsort(importances)[::-1]
     # Print the feature ranking
     print("Feature ranking:")
@@ -177,6 +166,7 @@ def extra_tree(X, y, trainingparams, out_file, num_feat=10):
                                           importances[indices[f]]))
 
     # Plot the feature importances of the forest
+    '''
     plt.figure()
     plt.title("Feature importances")
     plt.bar(range(num_feat), importances[indices][:num_feat],
@@ -185,6 +175,7 @@ def extra_tree(X, y, trainingparams, out_file, num_feat=10):
     plt.xlim([-1, num_feat])
     plt.xlabel("Feature")
     plt.show()
+    '''
     generate_classification_report(e_tree, X, y, out_file)
     return e_tree, X.columns[indices][:num_feat]
 
@@ -275,6 +266,18 @@ def evolutionary_pipeline(X, y, pipe_grid, out_file):
 
 
 if __name__ == '__main__':
+    parameter = sys.argv[1]
+    DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
+    engine = create_engine(DSN)
+    conn = engine.connect()
+    # get data
+    # parameter = "natflo_usage_intensity"
+    table_train = "_".join(["grasslands", "train", parameter]).lower()
+    table_test = "grasslands_test"
+    test_sql = "SELECT * FROM {}".format(table_test)
+    train_sql = "SELECT * FROM {}".format(table_train)
+    train = psql.read_sql(train_sql, engine)
+    test = psql.read_sql(test_sql, engine)
     homedir = os.path.expanduser('~')
     report_folder = os.path.join(homedir, "test-rlp", "training_cm")
     scikit_folder = os.path.join(homedir, "test-rlp", "sci-kit_rules")
@@ -282,63 +285,65 @@ if __name__ == '__main__':
     t0 = time()
     file_name = '_'.join([parameter, "report.txt"])
     file_name_kpca = '_'.join([parameter, "report_kpca.txt"])
-    file_name_et = '_'.join([parameter, "report_et.txt"])
-    file_name_reduced = '_'.join([parameter, "report_reduced.txt"])
+    file_name_et = '_'.join([parameter, "et.txt"])
+    file_name_et_train = '_'.join([parameter, "et_train.txt"])
+    file_name_reduced = '_'.join([parameter, "report_reduced_new.txt"])
     out_file = '/'.join([report_folder, file_name])
     out_file_kpca = '/'.join([report_folder, file_name_kpca])
     out_file_et = '/'.join([report_folder, file_name_et])
+    out_file_et_train = '/'.join([report_folder, file_name_et_train])
     out_file_reduced = '/'.join([report_folder, file_name_reduced])
     # prepare data
     train = train.fillna(0, axis=1)
     test = test.fillna(0, axis=1)
     X_train = train.drop([parameter], axis=1)
     X_test = test.drop([parameter], axis=1)
-    y_train = train[parameter]
-    y_test = test[parameter]
+    y_train = train[parameter].apply(str)
+    y_test = test[parameter].apply(str)
     X_train = X_train.select_dtypes(['float64'])
     X_test = X_test.select_dtypes(['float64'])
 
+    print("train: {}".format(y_train))
     # get 10 most important features
     forest, important_features = extra_tree(X_train, y_train, et_params,
-                                            out_file_et)
-    X_train_reduced = train[important_features]
-    ''' fit classifiers! '''
+                                            out_file_et_train)
+    generate_classification_report(forest, X_test, y_test, out_file_et)
+    ''' fit classifiers!'''
+
     print("*** Fitting DT with ALL features ***")
     dt_all = decision_tree(X_train, y_train, trainingparams,
                            out_file_reduced)
     print("Done fitting DT with ALL features {:0.3f}".format(time() - t0))
+
     print("*** Fitting DT with selected features ***")
+    X_train_reduced = train[important_features]
     dt = decision_tree(X_train_reduced, y_train, trainingparams,
                        out_file)
     print("Done fitting DT with selected features {:0.3f}".format(time() - t0))
-    neural_parameters = decision_tree_neural(X_train, y_train)
-    print("*** Using neural parameters to train DT:")
-    dt_neural = decision_tree(X_train, y_train, neural_parameters, out_file)
-    ''' files '''
-    my_out_file = ''.join([parameter, ".csv"])
-    my_out_file_all = ''.join([parameter, "_all.csv"])
-    my_out_file_neural = ''.join([parameter, "_neural.csv"])
+    # neural_parameters = decision_tree_neural(X_train, y_train)
+    # print("*** Using neural parameters to train DT:")
+    # dt_neural = decision_tree(X_train, y_train, neural_parameters, out_file)
+    #  files
+    my_out_file = ''.join([parameter, "_new.csv"])
+    #my_out_file_all = ''.join([parameter, "_all_new.csv"])
+    # my_out_file_neural = ''.join([parameter, "_neural.csv"])
+    my_out_file_dot = ''.join([parameter, ".dot"])
     # my_out_file_neural = ''.join([parameter, "_neural.csv"])
     # my_out_file_kpca = ''.join([scikit_folder, '\\', parameter, "_kpca.csv"])
     # save regular DT rules
     get_lineage(dt, X_train.columns, paramdict[parameter],
                 output_file="/".join([scikit_folder, my_out_file]))
-    get_lineage(dt_all, X_train.columns, paramdict[parameter],
-                output_file="/".join([scikit_folder, my_out_file_all]))
-    get_lineage(dt_neural, X_train.columns, paramdict[parameter],
-                output_file="/".join([scikit_folder, my_out_file_neural]))
+    #get_lineage(dt_all, X_train.columns, paramdict[parameter],
+    #            output_file="/".join([scikit_folder, my_out_file_all]))
+    # get_lineage(dt_neural, X_train.columns, paramdict[parameter],
+    #             output_file="/".join([scikit_folder, my_out_file_neural]))
     # save KPCA DT rules
     # get_lineage(dt_kpca, X_train.columns, paramdict[parameter],
     #            output_file=my_out_file_kpca)
-    '''
-    with open(tree_file, 'w') as f:
-        #dot_data = StringIO()
-        f = tree.export_graphviz(dt_pca, out_file=f,
-                             feature_names=X_train.columns,
-                             class_names=y_train,
-                             filled=True, rounded=True,
-                             special_characters=False)
-        graph = pydot.graph_from_dot_data(dot_data.getvalue())
-        Image(graph.create_png())
-    graph.write_png(tree_file)
-    '''
+    with open(my_out_file_dot, 'w+') as f:
+        f = tree.export_graphviz(dt_all, out_file=f, feature_names=X_train.columns,
+                                 class_names=["dry", "mesic", "very_wet"], filled=True,
+                                 rounded=True,
+                                 special_characters=False)
+    # graph = pydot.graph_from_dot_data(dot_data.getvalue())
+    # Image(graph.create_png()) graph.write_png(tree_file)
