@@ -7,7 +7,7 @@ Created on Tue Aug 18 13:56:26 2015
 """
 
 from __future__ import division
-from time import time
+from sknn.platform import cpu32, threading
 # from IPython.display import Image
 # from sklearn.externals.six import StringIO
 # import pydot
@@ -21,9 +21,7 @@ from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.tree import DecisionTreeClassifier
 import sklearn.tree as tree
 # from sklearn.decomposition import RandomizedPCA
-from sklearn.decomposition import KernelPCA
 from evolutionary_search import EvolutionaryAlgorithmSearchCV
-from sklearn.pipeline import Pipeline
 from sklearn.cross_validation import StratifiedKFold
 import pandas.io.sql as psql
 from sqlalchemy import create_engine
@@ -31,7 +29,7 @@ import numpy as np
 # import pydot
 # from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 import matplotlib.pyplot as plt
-# from sklearn.decomposition import PCA
+import logging
 
 paramdict = {
     "natflo_hydromorphic": ["0", "1"],
@@ -48,6 +46,23 @@ trainingparams = {'criterion': 'gini', 'max_depth': 8,
 et_params = {'n_estimators': 250, 'random_state': 0, 'n_jobs': -1,
              'class_weight': 'balanced'}
 
+
+parameters = {'dt__max_features': ['auto', 'sqrt', 'log2'],
+              'dt__max_depth': range(2, 10, 2),
+              'dt__criterion': ['gini', 'entropy'],
+              'dt__min_samples_split': range(2, 20, 2),
+              'dt__min_samples_leaf': range(4, 10, 2,),
+              'dt__class_weight': ['balanced'],
+              'spca__n_components': [20, 25, 30],
+              #'spca__kernel': ["poly", "rbf"],
+              'spca__n_jobs': [-1],
+              'et__n_estimators': range(600, 800, 100),
+              'et__max_features': ['auto', 'sqrt', 'log2'],
+              'et__min_samples_split': range(2, 26, 2),
+              'et__min_samples_leaf': range(2, 26, 2)
+              }
+
+'''
 parameters = {'max_features': ['auto', 'sqrt', 'log2'],
               'max_depth': range(2, 12, 2),
               'criterion': ['gini', 'entropy'],
@@ -56,24 +71,26 @@ parameters = {'max_features': ['auto', 'sqrt', 'log2'],
               'class_weight': ['balanced']
               }
 
+'''
 
 def decision_tree_neural(X_train, y_train):
     parameters = {
         'max_features': ['auto', 'sqrt', 'log2'],
-        'max_depth': range(2, 12, 2),
+        'max_depth': range(2, 14, 2),
         'criterion': ['gini', 'entropy'],
-        'min_samples_split': range(2, 20, 2),
-        'min_samples_leaf': range(2, 20, 2),
+        'min_samples_split': range(2, 22, 2),
+        'min_samples_leaf': range(2, 22, 2),
         'class_weight': ['balanced']
     }
     gs_dtree = EvolutionaryAlgorithmSearchCV(
         estimator=DecisionTreeClassifier(),
-        param_grid=parameters,
+        params=parameters,
         scoring="accuracy",
         cv=StratifiedKFold(y_train, n_folds=10),
-        verbose=False,
+        verbose=1,
         population_size=50,
-        mutation_prob=0.10,
+        gene_mutation_prob=0.10,
+        gene_crossover_prob=0.5,
         tournament_size=3,
         generations_number=10)
     gs_dtree.fit(X_train, y_train)
@@ -139,9 +156,9 @@ def generate_classification_report(clf, x_test, y_test, out_file=None):
     if out_file is not None:
         try:
             if sys.version < '3':
-                infile = io.open(out_file, 'wb')
+                infile = io.open(out_file, '+a')
             else:
-                infile = io.open(out_file, 'wb')
+                infile = io.open(out_file, '+a')
             with infile as classification:
                 classification.write(report)
                 classification.write(confusion)
@@ -252,47 +269,27 @@ def get_lineage(tree, feature_names, wet_classes,
         print(f)
 
 
-def evolutionary_pipeline(X, y, pipe_grid, out_file):
-    pipeline = Pipeline(steps=[('kpca', KernelPCA()),
-                               ('dt', DecisionTreeClassifier())])
-    ev_search = EvolutionaryAlgorithmSearchCV(pipeline, pipe_grid,
-                                              scoring=None,
-                                              verbose=True,
-                                              n_jobs=-1,
-                                              population_size=5).fit(X,
-                                                                     y)
-    # generate_classification_report(ev_search, X, y, out_file)
-    return ev_search
-
-
 if __name__ == '__main__':
+
     parameter = sys.argv[1]
+    homedir = os.path.expanduser('~')
+    report_folder = os.path.join(homedir, "test-rlp", "training_cm")
+    scikit_folder = os.path.join(homedir, "test-rlp", "sci-kit_rules")
+    log_filename = '_'.join([parameter, "report_pipeline.log"])
+    neural_filename = '_'.join([parameter, "report_neural.txt"])
     DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
     engine = create_engine(DSN)
     conn = engine.connect()
     # get data
-    # parameter = "natflo_usage_intensity"
     table_train = "_".join(["grasslands", "train", parameter]).lower()
     table_test = "grasslands_test"
     test_sql = "SELECT * FROM {}".format(table_test)
     train_sql = "SELECT * FROM {}".format(table_train)
     train = psql.read_sql(train_sql, engine)
     test = psql.read_sql(test_sql, engine)
-    homedir = os.path.expanduser('~')
-    report_folder = os.path.join(homedir, "test-rlp", "training_cm")
-    scikit_folder = os.path.join(homedir, "test-rlp", "sci-kit_rules")
-    scores = []
-    t0 = time()
-    file_name = '_'.join([parameter, "report.txt"])
-    file_name_kpca = '_'.join([parameter, "report_kpca.txt"])
-    file_name_et = '_'.join([parameter, "et.txt"])
-    file_name_et_train = '_'.join([parameter, "et_train.txt"])
-    file_name_reduced = '_'.join([parameter, "report_reduced_new.txt"])
-    out_file = '/'.join([report_folder, file_name])
-    out_file_kpca = '/'.join([report_folder, file_name_kpca])
-    out_file_et = '/'.join([report_folder, file_name_et])
-    out_file_et_train = '/'.join([report_folder, file_name_et_train])
-    out_file_reduced = '/'.join([report_folder, file_name_reduced])
+    logging.basicConfig(filename=log_filename, level=logging.DEBUG)
+    logging.basicConfig(format='%(asctime)s %(message)s',
+                        datefmt='%m/%d/%Y%I:%M:%S')
     # prepare data
     train = train.fillna(0, axis=1)
     test = test.fillna(0, axis=1)
@@ -302,48 +299,19 @@ if __name__ == '__main__':
     y_test = test[parameter].apply(str)
     X_train = X_train.select_dtypes(['float64'])
     X_test = X_test.select_dtypes(['float64'])
-
-    print("train: {}".format(y_train))
-    # get 10 most important features
-    forest, important_features = extra_tree(X_train, y_train, et_params,
-                                            out_file_et_train)
-    generate_classification_report(forest, X_test, y_test, out_file_et)
-    ''' fit classifiers!'''
-
-    print("*** Fitting DT with ALL features ***")
-    dt_all = decision_tree(X_train, y_train, trainingparams,
-                           out_file_reduced)
-    print("Done fitting DT with ALL features {:0.3f}".format(time() - t0))
-
-    print("*** Fitting DT with selected features ***")
-    X_train_reduced = train[important_features]
-    dt = decision_tree(X_train_reduced, y_train, trainingparams,
-                       out_file)
-    print("Done fitting DT with selected features {:0.3f}".format(time() - t0))
-    # neural_parameters = decision_tree_neural(X_train, y_train)
-    # print("*** Using neural parameters to train DT:")
-    # dt_neural = decision_tree(X_train, y_train, neural_parameters, out_file)
-    #  files
-    my_out_file = ''.join([parameter, "_new.csv"])
-    #my_out_file_all = ''.join([parameter, "_all_new.csv"])
-    # my_out_file_neural = ''.join([parameter, "_neural.csv"])
-    my_out_file_dot = ''.join([parameter, ".dot"])
-    # my_out_file_neural = ''.join([parameter, "_neural.csv"])
-    # my_out_file_kpca = ''.join([scikit_folder, '\\', parameter, "_kpca.csv"])
-    # save regular DT rules
-    get_lineage(dt, X_train.columns, paramdict[parameter],
-                output_file="/".join([scikit_folder, my_out_file]))
-    #get_lineage(dt_all, X_train.columns, paramdict[parameter],
-    #            output_file="/".join([scikit_folder, my_out_file_all]))
-    # get_lineage(dt_neural, X_train.columns, paramdict[parameter],
-    #             output_file="/".join([scikit_folder, my_out_file_neural]))
-    # save KPCA DT rules
-    # get_lineage(dt_kpca, X_train.columns, paramdict[parameter],
-    #            output_file=my_out_file_kpca)
-    with open(my_out_file_dot, 'w+') as f:
-        f = tree.export_graphviz(dt_all, out_file=f, feature_names=X_train.columns,
-                                 class_names=["dry", "mesic", "very_wet"], filled=True,
+    neural_parameters = decision_tree_neural(X_train, y_train)
+    print("*** Using neural parameters to train DT:")
+    dt_neural = decision_tree(X_train, y_train, neural_parameters,
+                              neural_filename)
+    # rules
+    neural_rules = ''.join([parameter, "_neural.csv"])
+    neural_dot = u''.join([parameter, ".dot"])
+    get_lineage(dt_neural, X_train.columns, paramdict[parameter],
+                output_file="/".join([scikit_folder, neural_rules]))
+    with open(neural_dot, 'w+') as f:
+        f = tree.export_graphviz(dt_neural, out_file=f,
+                                 feature_names=X_train.columns,
+                                 class_names=paramdict[parameter],
+                                 filled=True,
                                  rounded=True,
                                  special_characters=False)
-    # graph = pydot.graph_from_dot_data(dot_data.getvalue())
-    # Image(graph.create_png()) graph.write_png(tree_file)
