@@ -34,15 +34,11 @@ def training(engine, csv_folder, paramdict, parameter='all',
     a_df = a_df.ix[:, cols]
     out_table = '_'.join([table_name, parameter])
     a_df.to_sql(out_table, engine, if_exists='replace')
-    # conn = engine.connect()
-    # conn.execute("vacuum analyze {}".format(out_table))
-    '''
     file_path = os.path.join(csv_folder, "{0}_seath.csv".format(out_table))
     a_df.astype(object)
     a_df.astype(object).convert_objects()
     print(a_df.dtypes)
     print("writing file: {0}".format(file_path))
-    '''
 
 
 paramdict = {
