@@ -11,7 +11,7 @@ import os
 import sys
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.tree import DecisionTreeClassifier
-import sklearn.tree as tree
+from sklearn.tree import export_graphviz
 from evolutionary_search import EvolutionaryAlgorithmSearchCV
 from sklearn.pipeline import Pipeline
 import pandas.io.sql as psql
@@ -29,12 +29,12 @@ def get_lineage(tree, feature_names, wet_classes,
     print("dict: {}".format(tree.named_steps))
     print("keys: {}".format(tree.named_steps.keys()))
     print("values: {}".format(tree.named_steps.values()))
-    left = tree.named_steps['classification'].tree_.children_left
-    right = tree.named_steps['classification'].tree_.children_right
-    threshold = tree.named_steps['classification'].tree_.threshold
+    left = tree.named_steps['dt'].tree_.children_left
+    right = tree.named_steps['dt'].tree_.children_right
+    threshold = tree.named_steps['dt'].tree_.threshold
     features = [feature_names[i]
-                for i in tree.named_steps['classification'].tree_.feature]
-    value = tree.named_steps['classification'].tree_.value
+                for i in tree.named_steps['dt'].tree_.feature]
+    value = tree.named_steps['dt'].tree_.value
 
     try:
         if sys.version < '3':
@@ -88,7 +88,7 @@ def generate_classification_report(clf, x_test, y_test):  # , out_file=None):
     """Prints out a confusion matrix from the classifier object."""
     expected = y_test
     predicted = clf.predict(x_test)
-    report = """Classification report {}:
+    report = """dt report {}:
     {}\n""".format(clf, metrics.classification_report(expected, predicted))
     confusion = """Confusion matrix:
     {}\n""".format(metrics.confusion_matrix(expected, predicted))
@@ -146,21 +146,20 @@ if __name__ == '__main__':
     y_test = test[parameter].apply(str)
     X_train = X_train.select_dtypes(['float64'])
     X_test = X_test.select_dtypes(['float64'])
-
+    # parameters = {'criterion': 'entropy', 'max_depth': 10,
+    #              'max_features': 'auto', 'min_samples_leaf': 2,
+    #              'min_samples_split': 6, 'class_weight': 'balanced'}
     parameters = {
         'dt__max_features': ['auto', 'sqrt', 'log2'],
         'dt__max_depth': range(2, 12, 2),
         'dt__criterion': ['gini', 'entropy'],
-        'dt__min_samples_split': range(2, 20, 2),
-        'dt__min_samples_leaf': range(2, 20, 2),
+        'dt__min_samples_split': range(2, 12, 2),
+        'dt__min_samples_leaf': range(2, 12, 2),
         'dt__class_weight': ['balanced']
-        # 'et__n_estimators': [400, 600],
-        # 'et__class_weight': ['balanced'],
-        # 'et__n_jobs': [-1]
     }
     steps = [
             ('et',
-             SelectFromModel(ExtraTreesClassifier(n_estimators=600,
+             SelectFromModel(ExtraTreesClassifier(n_estimators=400,
                                                   class_weight='balanced',
                                                   n_jobs=-1))),
             ('dt', DecisionTreeClassifier())  # **parameters))
@@ -177,16 +176,17 @@ if __name__ == '__main__':
         tournament_size=3,
         generations_number=10)
     ev_search.fit(X_train, y_train)
+    # ev_search = pipeline.fit(X_train, y_train)
     generate_classification_report(ev_search, X_train, y_train)
     generate_classification_report(ev_search, X_test, y_test)
     #  files
     get_lineage(ev_search, X_train.columns, paramdict[parameter],
                 output_file=''.join([parameter, '_pipeline', '.csv']))
     with open(''.join([parameter, '_pipeline', '.dot']), 'w+') as f:
-        f = tree.export_graphviz(ev_search.named_steps['classification'],
-                                 out_file=f,
-                                 feature_names=X_train.columns,
-                                 class_names=paramdict[parameter],
-                                 filled=True,
-                                 rounded=True,
-                                 special_characters=False)
+        f = export_graphviz(ev_search.named_steps['dt'],
+                            out_file=f,
+                            feature_names=X_train.columns,
+                            class_names=paramdict[parameter],
+                            filled=True,
+                            rounded=True,
+                            special_characters=False)

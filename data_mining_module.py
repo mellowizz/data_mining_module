@@ -277,9 +277,13 @@ if __name__ == '__main__':
     feature_importances_png = ''.join([parameter, '.png'])
     feature_full = '/'.join([report_folder, feature_importances_png])
     rule_filename = ''.join([parameter, '.csv'])
+    rule_filename_all = ''.join([parameter, '_all.csv'])
     rule_dot = ''.join([parameter, '.dot'])
+    rule_all_dot = ''.join([parameter, '_all.dot'])
     my_out_file = '/'.join([scikit_folder, rule_filename])
+    my_out_file_all = '/'.join([scikit_folder, rule_filename_all])
     my_out_file_dot = '/'.join([scikit_folder, rule_dot])
+    my_out_file_all_dot = '/'.join([scikit_folder, rule_all_dot])
     logging_file = '/'.join([report_folder, parameter_log])
     logging.basicConfig(filename=logging_file, level=logging.INFO)
     DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
@@ -308,26 +312,39 @@ if __name__ == '__main__':
     generate_classification_report(forest, X_test, y_test)
     X_train_reduced = train[important_features]
     ''' fit classifiers!'''
-    start_ev_search = """*** Fitting DT with 25 features
-                        and EvolutionarySearchCV ***"""
+    start_ev_search = """*** Finding best parameters for DT using
+    EvolutionarySearchCV ***"""
     logging.info(start_ev_search)
-    neural_parameters = decision_tree_neural(X_train_reduced, y_train)
+    neural_parameters_reduced = decision_tree_neural(X_train_reduced, y_train)
+    neural_parameters_all = decision_tree_neural(X_train, y_train)
     finish_ev_search = "Done fitting DT with EvolutionarySearchCV"
     logging.info(finish_ev_search)
     start_dt_final = """*** Fitting DT with parameters from EvolutionarySearchCV and 25
                         selected features ***"""
     logging.info(start_dt_final)
-    dt = decision_tree(X_train_reduced, y_train, neural_parameters)
+    dt = decision_tree(X_train_reduced, y_train, neural_parameters_reduced)
     finish_dt_final = """Done fitting DT with EvolutionarySearchCV and 25
                       features"""
     logging.info(finish_dt_final)
+    start_dt_final = """*** Fitting DT with parameters from EvolutionarySearchCV
+    on all selected features ***"""
+    dt_all = decision_tree(X_train, y_train, neural_parameters_all)
     #  files
     get_lineage(dt, X_train.columns, paramdict[parameter],
                 output_file=my_out_file)
+    get_lineage(dt_all, X_train.columns, paramdict[parameter],
+                output_file=my_out_file_all)
+    with open(my_out_file_all_dot, 'w+') as f:
+        f = tree.export_graphviz(dt_all, out_file=f,
+                                 feature_names=X_train.columns,
+                                 class_names=paramdict[parameter],
+                                 filled=True,
+                                 rounded=True,
+                                 special_characters=False)
     with open(my_out_file_dot, 'w+') as f:
         f = tree.export_graphviz(dt, out_file=f,
                                  feature_names=X_train.columns,
-                                 class_names=["dry", "mesic", "very_wet"],
+                                 class_names=paramdict[parameter],
                                  filled=True,
                                  rounded=True,
                                  special_characters=False)

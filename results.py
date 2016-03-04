@@ -65,12 +65,12 @@ if __name__ == '__main__':
     output_folder = ''
     # print(homesubdirs.keys())
     try:
+        currtable = sys.argv[1]
         if 'tubCloud' in homesubdirs:
             output_folder = homesubdirs['tubCloud']
         elif 'ownCloud' in homesubdirs:
             output_folder = homesubdirs['ownCloud']
 
-        currtable = sys.argv[1]
         wetness = currtable.split('_')[1]
         desc_eunis = {'dry': 'E1', 'mesic': 'E2',
                       'wet': 'E3', 'mytable': currtable}

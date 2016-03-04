@@ -56,6 +56,7 @@ if __name__ == '__main__':
     homedir = path.expanduser('~')
     scikit_folder = path.join(homedir, "test-rlp", "sci-kit_rules")
     sql_folder = path.join(homedir, "test-rlp", "sql_rules")
+    ruleset = []
     for csv_name, csv_path in listcsvs(scikit_folder):
         sql_rules_out = "/".join([sql_folder, csv_name.replace(".csv",
                                                                ".sql")])
@@ -69,17 +70,17 @@ if __name__ == '__main__':
                     # this is a class
                     # print("class: {}".format(row[0]))
                     rules[row[0]].append(list(ruleset))
-                    ruleset.clear()
                 else:
                     # print ("appending: {} ".format(row))
                     ruleset.append("{} {} {}".format(*row))
                 # print("row: {}".format(row))
         test_table = "grasslands_test"
         class_name = csv_name.split(".csv")[0]
+        print("Class name {}".format(class_name))
         with io.open(sql_rules_out, 'w') as sql_rule:
             for key, values in rules.items():
                 sql_rule.write("--{}\n".format(key))
-                sql_rule.write("SELECT id, {0}".format(class_name))
+                sql_rule.write("SELECT id, {0} ".format(class_name))
                 sql_rule.write("FROM {} WHERE (\n".format(test_table))
                 mylist = [' and '.join(i) for i in values]
                 sql_rule.write("{}\n".format(') or \n('.join(mylist)))
@@ -91,9 +92,10 @@ if __name__ == '__main__':
                 # make new table
                 mylist = [' and '.join(i) for i in values]
                 union_rule = "{}\n".format(') or \n('.join(mylist))
-                # print("-- **** {0} values: {1} ****".format(class_name, key))
+                print("-- **** {0} values: {1} ****".format(class_name, key))
                 conn.execute("""DROP TABLE
-                                IF EXISTS results_{}""".format(class_name))
+                                IF EXISTS results_{}
+                             CASCADE""".format(class_name))
                 conn.execute("""CREATE TABLE results_{0} (
                             id bigint, {0} VARCHAR(25),
                             classified VARCHAR(25),
@@ -105,25 +107,13 @@ if __name__ == '__main__':
                                                  test_table,
                                                  union_rule))
             sql = ' UNION '.join(sql_query)
+            # print("sql: {}".format(sql))
             values_list = conn.execute(sql).fetchall()
+            print("values: {}".format(values_list))
             for row in values_list:
                 insert = """INSERT INTO results_{0}
                             (id, {0}, classified)
                             VALUES (%s, %s,
                             %s)""".format(class_name)
-                # print(insert)
+                print(insert)
                 conn.execute(insert, (row[0], row[1], row[2]))
-                # row[0],
-                #                        value,
-                #                        key))
-            '''
-            for key in rules.items():
-                #for myid, value in values_dict.items():
-                insert = """INSERT INTO results_{0}
-                            (id, {0}, classified)
-                            VALUES (%{id}s, %{class_name}s,
-                            %{classified}s)""".format(class_name)
-                conn.execute(insert, (**values_dictmyid,
-                                        value,
-                                        key))
-            '''
