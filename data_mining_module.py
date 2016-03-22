@@ -26,7 +26,7 @@ from sqlalchemy import create_engine
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
-from functools import wraps
+# from functools import wraps
 
 
 homedir = os.path.expanduser('~')
@@ -36,19 +36,6 @@ homedir = os.path.expanduser('~')
 logging.basicConfig(filename='data_mining_module.log',
                     format='%(asctime)s %(message)s',
                     level=logging.INFO)
-# logging.Formatter()
-
-
-def logit(func):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            print('Calling decorated function')
-            logging.info("*** " + func.__name__ + " was called ***")
-            return func(*args, **kwargs)
-        # decorator.__name = func.__name__
-        # decorator.__doc__ = func.__doc__
-        return wrapper
 
 # load this from dict cursor?
 paramdict = {
@@ -112,8 +99,8 @@ def extra_tree(X, y, trainingparams, num_feat=10, filename=None):  # out_file
     # Print the feature ranking
     print("Feature ranking:")
     for f in range(num_feat*2):
-        print("{} feature {} ({})".format(f + 1, X.columns[indices[f]],
-                                          importances[indices[f]]))
+        logging.info(("{} feature {} ({})".format(f + 1, X.columns[indices[f]],
+                                                  importances[indices[f]])))
 
     # Plot the feature importances of the forest
     plt.figure()
@@ -126,7 +113,6 @@ def extra_tree(X, y, trainingparams, num_feat=10, filename=None):  # out_file
     plt.show()
     if filename is not None:
         plt.savefig(filename)
-    print("len(x), len(y): {}:{}".format(len(X), len(y)))
     # generate_classification_report(e_tree, X, y)  # , out_file)
     return e_tree, X.columns[indices][:num_feat]
 
@@ -179,8 +165,8 @@ def generate_classification_report(clf, x_test, y_test):  # , out_file=None):
 
     scores = cross_validation.cross_val_score(clf, x_test, y_test, cv=5,
                                               n_jobs=-1)
-    accuracy = "Accuracy: {:0.2f} (+/- {:0.2f})".format(scores.mean(),
-                                                        scores.std() * 2)
+    logging.info("Accuracy: {:0.2f} (+/- {:0.2f})".format(scores.mean(),
+                                                          scores.std() * 2))
     '''
     report = """Classification report {}:
     {}\n""".format(clf, metrics.classification_report(expected, predicted))
@@ -206,7 +192,8 @@ def generate_classification_report(clf, x_test, y_test):  # , out_file=None):
         except IOError:
             print("Sorry can't read: {}".format(out_file))
     '''
-    return metrics.confusion_matrix(expected, predicted), accuracy
+    logging.info(metrics.confusion_matrix(expected, predicted))
+    # return metrics.confusion_matrix(expected, predicted), accuracy
 
 
 def decision_tree(X, y, trainingparam):  # out_file):
@@ -325,20 +312,8 @@ if __name__ == '__main__':
     DSN = 'postgresql://postgres@localhost:5432/rlp_saarburg'
     engine = create_engine(DSN)
     conn = engine.connect()
-    # get data
-    # parameter
-    # table_train = "_".join(["grasslands", "train", parameter]).lower()
-    # table_test = "grasslands_test"
-    # test_sql = "SELECT * FROM {}".format(table_test)
-    # train_sql = "SELECT * FROM {}".format(table_train)
+    ''' read data from table '''
     datatable = psql.read_sql("SELECT * FROM saarburg_grasslands", engine)
-    # = psql.read_sql(test_sql, engine)
-    # train = train.fillna(0, axis=1)
-    # test = test.fillna(0, axis=1)
-    # datatable.insert(0, parameter, datatable[parameter])
-    # cols = list(datatable)
-    # cols.insert(0, cols.pop(cols.index(parameter)))
-    # datatable = datatable.ix[:, cols]
     for i in ["kul", "kn1", "kn2", "wert_kn2",
               "we1min", "bodenart_kn1", "we2min"]:
         datatable = datatable.drop(i, axis=1)
@@ -347,24 +322,12 @@ if __name__ == '__main__':
     y = datatable[parameter].apply(str)
     X = datatable.drop([parameter], axis=1)
     X = X.select_dtypes(['float64'])
-    # print("columns: {}".format(X.columns))
-    # X_test = datatable.drop([parameter], axis=1)
-    # X_test = X_test.select_dtypes(['float64'])
-    # y_train = datatable[parameter]
-    # y_test = datatable[parameter]
-    # print("y: {}".format(y))
-    # get 10 most important features
-    # skf = StratifiedKFold(y, 5, test_size=0.6, random_state=0)
-    # print("length of X:{0}".format(X))
-    # for train_idx, test_idx in skf:
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
-    # X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-    # y_train, y_test = y[train_idx], y[test_idx]
     print("train: {}, test: {}".format(X_train, y_train))
     forest, important_features = extra_tree(X_train, y_train,
                                             et_params, num_feat=25,
                                             filename=feature_full)
-    logging.info(generate_classification_report(forest, X_test, y_test))
+    generate_classification_report(forest, X_test, y_test)
     X_train_reduced = X_train[important_features]
     ''' fit classifiers!'''
     logging.info(" ".join(["*** Finding best parameters for DT",
@@ -372,18 +335,17 @@ if __name__ == '__main__':
     neural_parameters_reduced = decision_tree_neural(X_train_reduced,
                                                      y_train)
     neural_parameters_all = decision_tree_neural(X_train, y_train)
-    finish_ev_search = "Done fitting DT with EvolutionarySearchCV"
-    logging.info(finish_ev_search)
-    start_dt_final = """*** Fitting DT with parameters from EvolutionarySearchCV and 25
-                        selected features ***"""
-    logging.info(start_dt_final)
+    logging.info("Done fitting DT with EvolutionarySearchCV")
+    logging.info(" ".join(["*** Fitting DT with parameters from",
+                          "EvolutionarySearchCV and",
+                           "25 selected features ***"]))
     dt = decision_tree(X_train_reduced, y_train, neural_parameters_reduced)
     finish_dt_final = """Done fitting DT with EvolutionarySearchCV and 25
                     features"""
     dt_all = decision_tree(X_train, y_train, neural_parameters_all)
     #  files
-    # get_lineage(dt, X_train.columns, paramdict[parameter],
-    #            output_file=my_out_file)
+    get_lineage(dt, X_train.columns, paramdict[parameter],
+                output_file=my_out_file)
     # write testing data to grasslands_test
     get_lineage(dt_all, X_train.columns, paramdict[parameter],
                 output_file=my_out_file_all)
@@ -394,12 +356,11 @@ if __name__ == '__main__':
                                  filled=True,
                                  rounded=True,
                                  special_characters=False)
-    '''
+
     with open(my_out_file_dot, 'w+') as f:
         f = tree.export_graphviz(dt, out_file=f,
-                                feature_names=X_train.columns,
-                                class_names=paramdict[parameter],
-                                filled=True,
-                                rounded=True,
-                                special_characters=False)
-        '''
+                                 feature_names=X_train.columns,
+                                 class_names=paramdict[parameter],
+                                 filled=True,
+                                 rounded=True,
+                                 special_characters=False)
