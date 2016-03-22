@@ -85,19 +85,15 @@ def decision_tree_neural(X, y):
     return gs_dtree.best_params_
 
 
-def extra_tree(X, y, trainingparams, num_feat=10, filename=None):  # out_file
-    """ Extra Tree Classifier """
+def extra_tree(X, y, trainingparams, num_feat=10, filename=None):
     e_tree = ExtraTreesClassifier(**trainingparams).fit(X, y)
     assert(e_tree is not None)
-    # X = pd.DataFrame(X)
-    # y = pd.DataFrame(y)
-    print("et_tree ={}".format(y))
     importances = e_tree.feature_importances_
     std = np.std([tree.feature_importances_ for tree in e_tree.estimators_],
                  axis=0)
     indices = np.argsort(importances)[::-1]
     # Print the feature ranking
-    print("Feature ranking:")
+    logging.info("Feature ranking:")
     for f in range(num_feat*2):
         logging.info(("{} feature {} ({})".format(f + 1, X.columns[indices[f]],
                                                   importances[indices[f]])))
@@ -122,7 +118,7 @@ def extra_tree_neural(X, y, num_feat=10):
         'n_estimators': [600],
         'max_features': ['auto', 'sqrt', 'log2'],
         'criterion': ['gini', 'entropy'],
-        'max_depth': [None],  # range(2,18,2),
+        'max_depth': [None],
         'min_samples_split': range(2, 22, 2),
         'min_samples_leaf': range(2, 22, 2)
     }
@@ -137,7 +133,8 @@ def extra_tree_neural(X, y, num_feat=10):
         tournament_size=3,
         generations_number=10)
     es_etree.fit(X, y)
-    print(es_etree.best_score_, es_etree.best_params_)
+    logging.info("Best ET: {}".format(es_etree.best_score_,
+                                      es_etree.best_params_))
     return es_etree.best_params_
 
 
@@ -165,35 +162,9 @@ def generate_classification_report(clf, x_test, y_test):  # , out_file=None):
 
     scores = cross_validation.cross_val_score(clf, x_test, y_test, cv=5,
                                               n_jobs=-1)
-    logging.info("Accuracy: {:0.2f} (+/- {:0.2f})".format(scores.mean(),
-                                                          scores.std() * 2))
-    '''
-    report = """Classification report {}:
-    {}\n""".format(clf, metrics.classification_report(expected, predicted))
-    confusion = """Confusion matrix:
-    {}\n""".format(metrics.confusion_matrix(expected, predicted))
-    logging.info(report)
-
-    logging.info(report)
-    logging.info(confusion)
-    logging.info(accuracy)
-    logging.info(scores)
-    if out_file is not None:
-        try:
-            if sys.version < '3':
-                infile = io.open(out_file, 'wb')
-            else:
-                infile = io.open(out_file, 'wb')
-            with infile as classification:
-                classification.write(report)
-                classification.write(confusion)
-                classification.write(accuracy)
-                classification.write("{}".format(scores))
-        except IOError:
-            print("Sorry can't read: {}".format(out_file))
-    '''
-    logging.info(metrics.confusion_matrix(expected, predicted))
-    # return metrics.confusion_matrix(expected, predicted), accuracy
+    accuracy = "Accuracy: {:0.2f} (+/- {:0.2f})".format(scores.mean(),
+                                                        scores.std() * 2)
+    return metrics.confusion_matrix(expected, predicted), accuracy
 
 
 def decision_tree(X, y, trainingparam):  # out_file):
@@ -204,10 +175,7 @@ def decision_tree(X, y, trainingparam):  # out_file):
     out_file -- file where the classification report is save to.
 
     """
-    d_tree = DecisionTreeClassifier(**trainingparam).fit(X, y)
-    generate_classification_report(d_tree, X, y)  # , out_file)
-    # dot_data = StringIO()
-    return d_tree
+    return DecisionTreeClassifier(**trainingparam).fit(X, y)
 
 
 def get_lineage(tree, feature_names, wet_classes,
@@ -218,7 +186,6 @@ def get_lineage(tree, feature_names, wet_classes,
     threshold = tree.tree_.threshold
     features = [feature_names[i] for i in tree.tree_.feature]
     value = tree.tree_.value
-    # print("value: I{0}".format(value))
 
     try:
         if sys.version < '3':
@@ -317,32 +284,39 @@ if __name__ == '__main__':
     for i in ["kul", "kn1", "kn2", "wert_kn2",
               "we1min", "bodenart_kn1", "we2min"]:
         datatable = datatable.drop(i, axis=1)
-
     datatable = datatable.fillna(0, axis=1)
     y = datatable[parameter].apply(str)
     X = datatable.drop([parameter], axis=1)
     X = X.select_dtypes(['float64'])
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
-    print("train: {}, test: {}".format(X_train, y_train))
+    num_feat = 25
     forest, important_features = extra_tree(X_train, y_train,
                                             et_params, num_feat=25,
                                             filename=feature_full)
-    generate_classification_report(forest, X_test, y_test)
-    X_train_reduced = X_train[important_features]
+    logging.info("ET: {}".format(generate_classification_report(forest, X_test,
+                                                                y_test)))
+    reduced = X_train[important_features]
     ''' fit classifiers!'''
     logging.info(" ".join(["*** Finding best parameters for DT",
                  "using EvolutionarySearchCV ***"]))
-    neural_parameters_reduced = decision_tree_neural(X_train_reduced,
+    neural_parameters_reduced = decision_tree_neural(reduced,
                                                      y_train)
     neural_parameters_all = decision_tree_neural(X_train, y_train)
     logging.info("Done fitting DT with EvolutionarySearchCV")
     logging.info(" ".join(["*** Fitting DT with parameters from",
                           "EvolutionarySearchCV and",
                            "25 selected features ***"]))
-    dt = decision_tree(X_train_reduced, y_train, neural_parameters_reduced)
+    dt = decision_tree(reduced, y_train, neural_parameters_reduced)
+    logging.info("DT, num features: {}".format(num_feat))
+    logging.info("report: {}".format(generate_classification_report(dt,
+                                                                    reduced,
+                                                                    y_train)))
     finish_dt_final = """Done fitting DT with EvolutionarySearchCV and 25
                     features"""
     dt_all = decision_tree(X_train, y_train, neural_parameters_all)
+    logging.info("DT ALL features:")
+    logging.info("{}".format(generate_classification_report(dt_all, X_train,
+                                                            y_train)))
     #  files
     get_lineage(dt, X_train.columns, paramdict[parameter],
                 output_file=my_out_file)
