@@ -28,14 +28,14 @@ import matplotlib.pyplot as plt
 import logging
 # from functools import wraps
 
-
-homedir = os.path.expanduser('~')
 # logging name: data_mining_module.py
 # parameter_log = ''.join([parameter, '.log'])
 # logging_file = '/'.join([report_folder, parameter_log])
 logging.basicConfig(filename='data_mining_module.log',
                     format='%(asctime)s %(message)s',
                     level=logging.INFO)
+
+DSN = 'postgresql://postgres@localhost:5432/rlp_saarburg'
 
 # load this from dict cursor?
 paramdict = {
@@ -253,8 +253,19 @@ def evolutionary_pipeline(X, y, pipe_grid, out_file):
     return ev_search
 
 
-def read_db_table(self):
-    pass
+def read_db_table():
+    engine = create_engine(DSN)
+    with engine.connect():
+        ''' read data from table '''
+        datatable = psql.read_sql("SELECT * FROM saarburg_grasslands", engine)
+        for i in ["kul", "kn1", "kn2", "wert_kn2",
+                  "we1min", "bodenart_kn1", "we2min"]:
+            datatable = datatable.drop(i, axis=1)
+        datatable = datatable.fillna(0, axis=1)
+        y = datatable[parameter].apply(str)
+        X = datatable.drop([parameter], axis=1)
+        X = X.select_dtypes(['float64'])
+    return X, y
 
 
 if __name__ == '__main__':
@@ -262,34 +273,27 @@ if __name__ == '__main__':
     # file stuff, get_data_from_db
     # train, test, write classification report
     # defaults to ./training_cm and ./sci-kit_rules
-    parameter = sys.argv[1]
-    # scikit_folder = os.path.join(homedir, "test-rlp", "sci-kit_rules")
-    feature_importances_png = ''.join([parameter, '.png'])
+    try:
+        parameter = sys.argv[1]
+        num_feat = sys.argv[2]
+    except IndexError:
+        print("*** Number of features not given!!")
+        print("DEFAULT: 25")
+        num_feat = 25
     report_folder = os.path.join(os.getcwd(), "training_cm")
     rules_folder = os.path.join(os.getcwd(), "rules")
+    rules_folder_reduced = os.path.join(os.getcwd(), "rules_reduced")
+    feature_importances_png = ''.join([parameter, '.png'])
     feature_full = '/'.join([report_folder, feature_importances_png])
     rule_filename = ''.join([parameter, '.csv'])
-    rule_filename_all = ''.join([parameter, '_all.csv'])
-    rule_dot = ''.join([parameter, '.dot'])
-    rule_all_dot = ''.join([parameter, '_all.dot'])
-    my_out_file = '/'.join([rules_folder, rule_filename])
-    my_out_file_all = '/'.join([rules_folder, rule_filename_all])
-    my_out_file_dot = '/'.join([rules_folder, rule_dot])
-    my_out_file_all_dot = '/'.join([rules_folder, rule_all_dot])
-    DSN = 'postgresql://postgres@localhost:5432/rlp_saarburg'
-    engine = create_engine(DSN)
-    conn = engine.connect()
-    ''' read data from table '''
-    datatable = psql.read_sql("SELECT * FROM saarburg_grasslands", engine)
-    for i in ["kul", "kn1", "kn2", "wert_kn2",
-              "we1min", "bodenart_kn1", "we2min"]:
-        datatable = datatable.drop(i, axis=1)
-    datatable = datatable.fillna(0, axis=1)
-    y = datatable[parameter].apply(str)
-    X = datatable.drop([parameter], axis=1)
-    X = X.select_dtypes(['float64'])
+    rule_dot = ''.join([parameter, '_reduced.dot'])
+    rule_all_dot = ''.join([parameter, '.dot'])
+    my_out_file = '/'.join([rules_folder_reduced, rule_filename])
+    my_out_file_all = '/'.join([report_folder, rule_filename])
+    my_file_dot = '/'.join([report_folder, rule_dot])
+    my_file_all_dot = '/'.join([rules_folder, rule_all_dot])
+    X, y = read_db_table()
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
-    num_feat = 25
     forest, important_features = extra_tree(X_train, y_train,
                                             et_params, num_feat=25,
                                             filename=feature_full)
@@ -323,7 +327,7 @@ if __name__ == '__main__':
     # write testing data to grasslands_test
     get_lineage(dt_all, X_train.columns, paramdict[parameter],
                 output_file=my_out_file_all)
-    with open(my_out_file_all_dot, 'w+') as f:
+    with open(my_file_all_dot, 'w+') as f:
         f = tree.export_graphviz(dt_all, out_file=f,
                                  feature_names=X_train.columns,
                                  class_names=paramdict[parameter],
@@ -331,7 +335,7 @@ if __name__ == '__main__':
                                  rounded=True,
                                  special_characters=False)
 
-    with open(my_out_file_dot, 'w+') as f:
+    with open(my_file_dot, 'w+') as f:
         f = tree.export_graphviz(dt, out_file=f,
                                  feature_names=X_train.columns,
                                  class_names=paramdict[parameter],
