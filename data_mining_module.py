@@ -8,6 +8,7 @@ Created on Tue Aug 18 13:56:26 2015
 
 from __future__ import division
 import os
+import subprocess
 import sys
 import io
 from sklearn import cross_validation
@@ -58,7 +59,7 @@ parameters = {'max_features': ['auto', 'sqrt', 'log2'],
               'criterion': ['gini', 'entropy'],
               'min_samples_split': range(2, 20, 2),
               'min_samples_leaf': range(2, 20, 2,),
-              'class_weight': ['balanced']
+              'class_weight': [None, 'balanced']
               }
 
 
@@ -69,7 +70,7 @@ def decision_tree_neural(X, y):
         'criterion': ['gini', 'entropy'],
         'min_samples_split': range(2, 20, 2),
         'min_samples_leaf': range(2, 20, 2),
-        'class_weight': ['balanced']
+        'class_weight': [None, 'balanced']
     }
     gs_dtree = EvolutionaryAlgorithmSearchCV(
         estimator=DecisionTreeClassifier(),
@@ -282,21 +283,33 @@ if __name__ == '__main__':
         num_feat = 25
     report_folder = os.path.join(os.getcwd(), "training_cm")
     rules_folder = os.path.join(os.getcwd(), "rules")
-    rules_folder_reduced = os.path.join(os.getcwd(), "rules_reduced")
-    feature_importances_png = ''.join([parameter, '.png'])
-    feature_full = '/'.join([report_folder, feature_importances_png])
-    rule_filename = ''.join([parameter, '.csv'])
-    rule_dot = ''.join([parameter, '_reduced.dot'])
-    rule_all_dot = ''.join([parameter, '.dot'])
-    my_out_file = '/'.join([rules_folder_reduced, rule_filename])
-    my_out_file_all = '/'.join([report_folder, rule_filename])
-    my_file_dot = '/'.join([report_folder, rule_dot])
-    my_file_all_dot = '/'.join([rules_folder, rule_all_dot])
+    rules_folder_reduced = os.path.join(os.getcwd(),
+                                        "rules_reduced")
+    ''' create folders if they do not exist '''
+    if not os.path.exists(report_folder):
+        os.mkdir(report_folder)
+    elif not os.path.exists(rules_folder):
+        os.mkdir(rules_folder)
+    elif not os.path.exists(rules_folder_reduced):
+        os.mkdir(rules_folder_reduced)
+
+    feature_importances_png = os.path.join(report_folder,
+                                           'feature_importances.png')
+    dot_file = ''.join([parameter, '.dot'])
+    dot_file_reduced = ''.join([parameter, '_', num_feat, '.dot'])
+    my_out_file_reduced = ''.join([rules_folder_reduced, '/',
+                                   parameter, '.csv'])
+    my_out_file = ''.join([rules_folder, '/', parameter, '.csv'])
+    print("my_out_file: {}".format(my_out_file))
+    # dot files go in report_folder
+    my_file_dot = os.path.join(report_folder, dot_file)
+    my_file_dot_reduced = os.path.join(report_folder, dot_file_reduced)
+    print("dot file: {}".format(my_file_dot))
     X, y = read_db_table()
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
     forest, important_features = extra_tree(X_train, y_train,
                                             et_params, num_feat=25,
-                                            filename=feature_full)
+                                            filename=feature_importances_png)
     logging.info("ET: {}".format(generate_classification_report(forest, X_test,
                                                                 y_test)))
     reduced = X_train[important_features]
@@ -315,19 +328,19 @@ if __name__ == '__main__':
     logging.info("report: {}".format(generate_classification_report(dt,
                                                                     reduced,
                                                                     y_train)))
-    finish_dt_final = """Done fitting DT with EvolutionarySearchCV and 25
-                    features"""
+    finish_dt_final = """Done fitting DT with EvolutionarySearchCV and {}
+                    features""".format(num_feat)
     dt_all = decision_tree(X_train, y_train, neural_parameters_all)
     logging.info("DT ALL features:")
     logging.info("{}".format(generate_classification_report(dt_all, X_train,
                                                             y_train)))
     #  files
     get_lineage(dt, X_train.columns, paramdict[parameter],
-                output_file=my_out_file)
+                output_file=my_out_file_reduced)
     # write testing data to grasslands_test
     get_lineage(dt_all, X_train.columns, paramdict[parameter],
-                output_file=my_out_file_all)
-    with open(my_file_all_dot, 'w+') as f:
+                output_file=my_out_file)
+    with open(my_file_dot_reduced, 'w+') as f:
         f = tree.export_graphviz(dt_all, out_file=f,
                                  feature_names=X_train.columns,
                                  class_names=paramdict[parameter],
@@ -342,3 +355,8 @@ if __name__ == '__main__':
                                  filled=True,
                                  rounded=True,
                                  special_characters=False)
+    subprocess.call(["dot", "-Tpng", my_file_dot_reduced, "-o",
+                     ''.join([report_folder, '/', parameter, '_',
+                              num_feat, '.png'])])
+    subprocess.call(["dot", "-Tpng", my_file_dot, "-o",
+                     ''.join([report_folder, '/', parameter, '.png'])])
