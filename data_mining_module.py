@@ -60,7 +60,7 @@ DSN = 'postgresql://postgres@localhost:5432/rlp_saarburg'
 
 # load this from dict cursor?
 paramdict = {
-    "natflo_hydromorphic": ["0", "1"],
+    # "natflo_hydromorphic": ["0", "1"],
     "natflo_immature_soil": ["0", "1"],
     "natflo_species_richness": ["species_poor", "species_rich"],
     # "natflo_usage": ["grazing", "mowing", "orchards", "vineyards"],
@@ -97,7 +97,7 @@ def decision_tree_neural(X, y):
         estimator=DecisionTreeClassifier(),
         params=parameters,
         scoring="accuracy",
-        cv=KFold(len(y), 5),
+        cv=KFold(len(X), 5),
         verbose=1,
         population_size=50,
         gene_mutation_prob=0.10,
@@ -149,7 +149,7 @@ def extra_tree_neural(X, y, num_feat=10):
         estimator=ExtraTreesClassifier(),
         params=parameters,
         scoring="accuracy",
-        cv=KFold(len(y), 5),
+        cv=KFold(len(X), 5),
         verbose=1,
         population_size=50,
         gene_mutation_prob=0.10,
@@ -278,7 +278,6 @@ def read_db_table(table, parameter):
                                   and natflo_species_richness is not
                                   null'''.format(table),
                                   engine)
-
         if parameter == 'all':
             # "natflo_acidity",
             parameter = paramdict.keys()
@@ -296,13 +295,12 @@ def read_db_table(table, parameter):
         except ValueError as e:
             print(e.message)
 
-        # datatable = datatable.fillna(0, axis=1)
+        datatable = datatable.fillna(0, axis=1)
         y = datatable[parameter]
-        # y = pd.DataFrame(y.apply(str))
+        # y = y.apply(str)
         X = datatable.drop(parameter, axis=1)
         X = X.select_dtypes(['float64'])
     return X, y
-
 
 if __name__ == '__main__':
     # usage: data_mining_module.py -infolder -outfolder -train/test table
@@ -335,87 +333,87 @@ if __name__ == '__main__':
     feature_importances_png = os.path.join(report_folder,
                                            'feature_importances.png')
     X, y = read_db_table(table, parameter)
-    print("y: {}".format(y))
+    # print("y: {}".format(y))
     # print("x: {} y: {}".format(len(X), len(y)))
-    kf = KFold(len(X))
-    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
-    for train_index, test_index in kf:
-        for curr in y:
-            X_train, X_test = X[train_index], X[test_index]
-            y_train, y_test = y[train_index], y[test_index]
-            y_train_curr = y_train[curr]
-            y_test_curr = y_test[curr]
-            dot_file = ''.join([curr, '.dot'])
-            dot_file_reduced = ''.join([curr, '_', num_feat, '.dot'])
-            my_out_file_reduced = ''.join([rules_folder_reduced, '/',
-                                        curr, '.csv'])
-            my_out_file = ''.join([rules_folder, '/', curr, '.csv'])
-            print("my_out_file: {}".format(my_out_file))
-            # dot files go in report_folder
-            my_file_dot = os.path.join(report_folder, dot_file)
-            my_file_dot_reduced = os.path.join(report_folder, dot_file_reduced)
-            print("dot file: {}".format(my_file_dot))
-            forest, important_features = extra_tree(X_train, y_train_curr,
-                                                    et_params,
-                                                    num_feat=int(num_feat),
-                                                    filename=feature_importances_png)
-            logging.info("ET TEST: {}".format(classification_report(forest, X_test,
+    # kf = KFold(data.shape[0])
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
+    #for train, test in kf:
+    for curr in paramdict:
+        #X_train, X_test = X[train_index], X[test_index]
+        #y_train, y_test = y[train_index], y[test_index]
+        y_train_curr = y_train[curr]
+        y_test_curr = y_test[curr]
+        dot_file = ''.join([curr, '.dot'])
+        dot_file_reduced = ''.join([curr, '_', num_feat, '.dot'])
+        my_out_file_reduced = ''.join([rules_folder_reduced, '/',
+                                    curr, '.csv'])
+        my_out_file = ''.join([rules_folder, '/', curr, '.csv'])
+        print("my_out_file: {}".format(my_out_file))
+        # dot files go in report_folder
+        my_file_dot = os.path.join(report_folder, dot_file)
+        my_file_dot_reduced = os.path.join(report_folder, dot_file_reduced)
+        print("dot file: {}".format(my_file_dot))
+        forest, important_features = extra_tree(X_train, y_train_curr,
+                                                et_params,
+                                                num_feat=int(num_feat),
+                                                filename=feature_importances_png)
+        logging.info("ET TEST: {}".format(classification_report(forest, X_test,
+                                                        y_test_curr)))
+        reduced = X_train[important_features]
+        ''' fit classifiers!'''
+        logging.info(" ".join(["*** Finding best parameters for DT",
+                    "using EvolutionarySearchCV ***"]))
+        neural_parameters_reduced = decision_tree_neural(reduced,
+                                                        y_train_curr)
+        neural_parameters_all = decision_tree_neural(X_train, y_train_curr)
+        logging.info("Done fitting DT with EvolutionarySearchCV")
+        logging.info(" ".join(["*** Fitting DT with parameters from",
+                            "EvolutionarySearchCV and",
+                            "{} selected features ***".format(num_feat)]))
+        dt = decision_tree(reduced, y_train_curr, neural_parameters_reduced)
+        logging.info("DT, num features: {}".format(num_feat))
+        logging.info("TRAIN report: {}".format(classification_report(dt,
+                                                                    reduced,
+                                                                    y_train_curr)))
+
+        logging.info("TEST report: {}".format(classification_report(dt,
+                                                                    reduced,
+                                                                    y_train_curr)))
+        finish_dt_final = """Done fitting DT with EvolutionarySearchCV and {}
+                        features""".format(num_feat)
+        dt_all = decision_tree(X_train, y_train_curr, neural_parameters_all)
+        logging.info("DT ALL features:")
+        logging.info("TRAIN:{}".format(classification_report(dt_all, X_train,
+                                                            y_train_curr)))
+        logging.info("TEST:{}".format(classification_report(dt_all, X_test,
                                                             y_test_curr)))
-            reduced = X_train[important_features]
-            ''' fit classifiers!'''
-            logging.info(" ".join(["*** Finding best parameters for DT",
-                        "using EvolutionarySearchCV ***"]))
-            neural_parameters_reduced = decision_tree_neural(reduced,
-                                                            y_train_curr)
-            neural_parameters_all = decision_tree_neural(X_train, y_train)
-            logging.info("Done fitting DT with EvolutionarySearchCV")
-            logging.info(" ".join(["*** Fitting DT with parameters from",
-                                "EvolutionarySearchCV and",
-                                "{} selected features ***".format(num_feat)]))
-            dt = decision_tree(reduced, y_train_curr, neural_parameters_reduced)
-            logging.info("DT, num features: {}".format(num_feat))
-            logging.info("TRAIN report: {}".format(classification_report(dt,
-                                                                        reduced,
-                                                                        y_train_curr)))
+        #  files
+        get_lineage(dt, X_train.columns, paramdict[parameter],
+                    output_file=my_out_file_reduced)
+        # write testing data to grasslands_test
+        get_lineage(dt_all, X_train.columns, paramdict[parameter],
+                    output_file=my_out_file)
+        with open(my_file_dot_reduced, 'w+') as f:
+            f = tree.export_graphviz(dt_all, out_file=f,
+                                    feature_names=X_train.columns,
+                                    class_names=paramdict[parameter],
+                                    filled=True,
+                                    rounded=True,
+                                    special_characters=False)
 
-            logging.info("TEST report: {}".format(classification_report(dt,
-                                                                        reduced,
-                                                                        y_train_curr)))
-            finish_dt_final = """Done fitting DT with EvolutionarySearchCV and {}
-                            features""".format(num_feat)
-            dt_all = decision_tree(X_train, y_train_curr, neural_parameters_all)
-            logging.info("DT ALL features:")
-            logging.info("TRAIN:{}".format(classification_report(dt_all, X_train,
-                                                                y_train_curr)))
-            logging.info("TEST:{}".format(classification_report(dt_all, X_test,
-                                                                y_test_curr)))
-            #  files
-            get_lineage(dt, X_train.columns, paramdict[parameter],
-                        output_file=my_out_file_reduced)
-            # write testing data to grasslands_test
-            get_lineage(dt_all, X_train.columns, paramdict[parameter],
-                        output_file=my_out_file)
-            with open(my_file_dot_reduced, 'w+') as f:
-                f = tree.export_graphviz(dt_all, out_file=f,
-                                        feature_names=X_train.columns,
-                                        class_names=paramdict[parameter],
-                                        filled=True,
-                                        rounded=True,
-                                        special_characters=False)
-
-            with open(my_file_dot, 'w+') as f:
-                f = tree.export_graphviz(dt, out_file=f,
-                                        feature_names=X_train.columns,
-                                        class_names=paramdict[parameter],
-                                        filled=True,
-                                        rounded=True,
-                                        special_characters=False)
-            subprocess.call(["dot", "-Tpng", my_file_dot_reduced, "-o",
-                            ''.join([report_folder, '/', parameter, '_',
-                                    num_feat, '.png'])])
-            subprocess.call(["dot", "-Tpng", my_file_dot, "-o",
-                            ''.join([report_folder, '/', parameter, '.png'])])
-        ''' write test data '''
+        with open(my_file_dot, 'w+') as f:
+            f = tree.export_graphviz(dt, out_file=f,
+                                    feature_names=X_train.columns,
+                                    class_names=paramdict[parameter],
+                                    filled=True,
+                                    rounded=True,
+                                    special_characters=False)
+        subprocess.call(["dot", "-Tpng", my_file_dot_reduced, "-o",
+                        ''.join([report_folder, '/', parameter, '_',
+                                num_feat, '.png'])])
+        subprocess.call(["dot", "-Tpng", my_file_dot, "-o",
+                        ''.join([report_folder, '/', parameter, '.png'])])
+    ''' write test data '''
     engine = create_engine(DSN)
     with engine.connect():
         test = pd.concat([X_test, y_test], axis=1)
