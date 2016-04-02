@@ -388,15 +388,15 @@ if __name__ == '__main__':
         logging.info("TEST:{}".format(classification_report(dt_all, X_test,
                                                             y_test_curr)))
         #  files
-        get_lineage(dt, X_train.columns, paramdict[parameter],
+        get_lineage(dt, X_train.columns, paramdict[curr],
                     output_file=my_out_file_reduced)
         # write testing data to grasslands_test
-        get_lineage(dt_all, X_train.columns, paramdict[parameter],
+        get_lineage(dt_all, X_train.columns, paramdict[curr],
                     output_file=my_out_file)
         with open(my_file_dot_reduced, 'w+') as f:
             f = tree.export_graphviz(dt_all, out_file=f,
                                     feature_names=X_train.columns,
-                                    class_names=paramdict[parameter],
+                                    class_names=paramdict[curr],
                                     filled=True,
                                     rounded=True,
                                     special_characters=False)
@@ -404,15 +404,15 @@ if __name__ == '__main__':
         with open(my_file_dot, 'w+') as f:
             f = tree.export_graphviz(dt, out_file=f,
                                     feature_names=X_train.columns,
-                                    class_names=paramdict[parameter],
+                                    class_names=paramdict[curr],
                                     filled=True,
                                     rounded=True,
                                     special_characters=False)
         subprocess.call(["dot", "-Tpng", my_file_dot_reduced, "-o",
-                        ''.join([report_folder, '/', parameter, '_',
+                        ''.join([report_folder, '/', curr, '_',
                                 num_feat, '.png'])])
         subprocess.call(["dot", "-Tpng", my_file_dot, "-o",
-                        ''.join([report_folder, '/', parameter, '.png'])])
+                        ''.join([report_folder, '/', curr, '.png'])])
     ''' write test data '''
     engine = create_engine(DSN)
     with engine.connect():
