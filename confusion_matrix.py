@@ -11,6 +11,7 @@ try:
     from os import scandir
 except:
     from scandir import scandir
+import sys
 from sqlalchemy import create_engine
 from os import path
 from sklearn.metrics.classification import confusion_matrix
@@ -44,38 +45,38 @@ def plot_confusion_matrix(cm, title='Confusion matrix', cmap=plt.cm.Blues):
 
 if __name__ == '__main__':
     paramdict = {
-        "natflo_hydromorphic": ["0", "1"],
-        "natflo_immature_soil": ["0", "1"],
-        "natflo_species_richness": ["species_poor", "species_rich"],
-        "natflo_usage": ["grazing", "mowing", "orchards", "vineyards"],
-        "natflo_usage_intensity": ["high", "medium", "low"],
-        "natflo_wetness": ["dry", "mesic", "very_wet"]
+        # "natflo_hydromorphic": ["0", "1"],
+         "natflo_immature_soil": ["0", "1"],
+         "natflo_species_richness": ["species_poor", "species_rich"],
+        # "natflo_usage": ["grazing", "mowing", "orchards", "vineyards"],
+        # "natflo_usage_intensity": ["high", "medium", "low"],
+         "natflo_wetness": ["dry", "mesic", "very_wet"]
     }
-    seath_rule_folder = "seath_rules"
-    DSN = 'postgresql://postgres@localhost:5432/rlp_spatial'
+    dt_rule_folder = ""
+    DSN = 'postgresql://postgres@localhost:5432/rlp_saarburg'
     engine = create_engine(DSN)
     conn = engine.connect()
     algorithmn = "" # "" for dt or seath
     homedir = expanduser('~')
-    homesubdirs = defaultdict() 
+    homesubdirs = defaultdict()
     for i, j in subdirs(homedir):
        homesubdirs[i] = j
-       
+
     try:
         if 'tubCloud' in homesubdirs:
             output_folder = homesubdirs['tubCloud']
-        elif 'ownCloud' in homesubdirs: 
+        elif 'ownCloud' in homesubdirs:
             output_folder = homesubdirs['ownCloud']
-        seath_rule_folder = osjoin(output_folder, seath_rule_folder)
-        seath_rules = [i for i, _ in subdirs(seath_rule_folder)]
-        print("seath rules: {}".format(seath_rules))
+        dt_rule_folder = osjoin(homedir, "git", "data_mining_module", "rules")
         output_folder = osjoin(output_folder, "accuracy_assessments")
-        for parameter in seath_rules:
+        test_area = sys.argv[1]
+        for parameter in paramdict:
+            print("current parameter: {}".format(parameter))
             if algorithmn == '':
                 base_rulename = parameter
             else:
                 base_rulename = "_".join([parameter, algorithmn])
-            results_tbl = '_'.join(["results", base_rulename])
+            results_tbl = '_'.join(["results", base_rulename, test_area])
             sql_query = """SELECT {}, classified
                             FROM {}""".format(parameter, results_tbl)
             mydf = psql.read_sql(sql_query, engine)
@@ -83,9 +84,9 @@ if __name__ == '__main__':
                 mydf[parameter] = re.sub(r"[\\s]", "_", my_df[parameter])
             y_true = mydf[parameter].apply(str)
             y_pred = mydf["classified"].apply(str)
-            #print(confusion_matrix(y_true, y_pred))
-            #, labels=paramdict[parameter]))
-            confusion_out = ''.join([base_rulename, ".txt"])
+            # print(confusion_matrix(y_true, y_pred))
+            # , labels=paramdict[parameter]))
+            confusion_out = ''.join([base_rulename, '_', test_area, ".txt"])
             confusion_out = osjoin(output_folder, confusion_out)
             print("confusion matrix located: {}".format(confusion_out))
             with open(confusion_out, 'w+') as f:

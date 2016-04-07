@@ -61,12 +61,12 @@ DSN = 'postgresql://postgres@localhost:5432/rlp_saarburg'
 # load this from dict cursor?
 paramdict = {
     # "natflo_hydromorphic": ["0", "1"],
-    "natflo_immature_soil": ["0", "1"],
-    "natflo_species_richness": ["species_poor", "species_rich"],
+    # "natflo_immature_soil": ["0", "1"],
+    #"natflo_species_richness": ["species_poor", "species_rich"],
     # "natflo_usage": ["grazing", "mowing", "orchards", "vineyards"],
     # "natflo_usage_intensity": ["high", "medium", "low"],
-    "natflo_wetness": ["dry", "mesic", "wet"],
-    "natflo_acidity": ["alkaline", "acid"]
+     "natflo_wetness": ["dry", "mesic", "wet"]
+    # "natflo_acidity": ["alkaline", "acid"]
     }
 
 trainingparams = {'criterion': 'gini', 'max_depth': 8,
@@ -112,6 +112,7 @@ def extra_tree(X, y, trainingparams, num_feat=10, filename=None):
     e_tree = ExtraTreesClassifier(**trainingparams).fit(X, y)
     assert(e_tree is not None)
     importances = e_tree.feature_importances_
+    print("importances: {}".format(importances))
     std = np.std([tree.feature_importances_ for tree in e_tree.estimators_],
                  axis=0)
     indices = np.argsort(importances)[::-1]
@@ -125,7 +126,7 @@ def extra_tree(X, y, trainingparams, num_feat=10, filename=None):
     plt.figure()
     plt.title("Feature importances")
     plt.bar(range(10), importances[indices][:10],
-            color="r", yerr=std[indices][:10], align="center")
+            color="r", yerr=np.std[indices][:10], align="center")
     plt.xticks(range(10), X.columns[indices][:10])
     plt.xlim([-1, 10])
     plt.xlabel("Feature")
@@ -163,6 +164,7 @@ def extra_tree_neural(X, y, num_feat=10):
 
 def plot_feature_importance(forest, all_df, num_feat=10):
     importances = forest.feature_importances_
+    print("importances: {}".format(importances))
     std = np.std([tree.feature_importances_ for tree in forest.estimators_],
                  axis=0)
     indices = np.argsort(importances)[::-1]
@@ -271,12 +273,13 @@ def get_lineage(tree, feature_names, wet_classes,
 def read_db_table(table, parameter):
     engine = create_engine(DSN)
     with engine.connect():
-        ''' read data from table '''
+        ''' read data from table
+        where natflo_wetness is not null
+        and natflo_immature_soil is not null
+        and natflo_species_richness is not'''
         datatable = psql.read_sql('''SELECT * FROM {}
-                                  where natflo_wetness is not null
-                                  and natflo_immature_soil is not null
-                                  and natflo_species_richness is not
-                                  null'''.format(table),
+                                  where natflo_acidity is not null
+                                  '''.format(table),
                                   engine)
         if parameter == 'all':
             # "natflo_acidity",
@@ -295,8 +298,8 @@ def read_db_table(table, parameter):
         except ValueError as e:
             print(e.message)
 
-        datatable = datatable.fillna(0, axis=1)
-        y = datatable[parameter]
+        datatable = datatable.fillna(0)
+        y = pd.DataFrame(datatable[parameter]) #, dtype=str)
         # y = y.apply(str)
         X = datatable.drop(parameter, axis=1)
         X = X.select_dtypes(['float64'])
@@ -336,6 +339,7 @@ if __name__ == '__main__':
     # print("y: {}".format(y))
     # print("x: {} y: {}".format(len(X), len(y)))
     # kf = KFold(data.shape[0])
+    print(y)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
     #for train, test in kf:
     for curr in paramdict:
