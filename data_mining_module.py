@@ -17,9 +17,10 @@ from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.tree import DecisionTreeClassifier
 import sklearn.tree as tree
 from evolutionary_search import EvolutionaryAlgorithmSearchCV
-from sklearn.cross_validation import StratifiedKFold
+# from sklearn.cross_validation import StratifiedKFold
 from sklearn.cross_validation import KFold
 from sklearn.cross_validation import train_test_split
+from sklearn.feature_selection import SelectKBest
 import pandas.io.sql as psql
 import pandas as pd
 from sqlalchemy import create_engine
@@ -72,7 +73,7 @@ paramdict = {
 trainingparams = {'criterion': 'gini', 'max_depth': 8,
                   'max_features': 'auto', 'min_samples_leaf': 6,
                   'min_samples_split': 8, 'class_weight': 'balanced'}
-et_params = {'n_estimators': 250, 'random_state': 0, 'n_jobs': -1,
+et_params = {'n_estimators': 600, 'random_state': 0, 'n_jobs': -1,
              'class_weight': 'balanced'}
 
 parameters = {'max_features': ['auto', 'sqrt', 'log2'],
@@ -112,7 +113,6 @@ def extra_tree(X, y, trainingparams, num_feat=10, filename=None):
     e_tree = ExtraTreesClassifier(**trainingparams).fit(X, y)
     assert(e_tree is not None)
     importances = e_tree.feature_importances_
-    print("importances: {}".format(importances))
     std = np.std([tree.feature_importances_ for tree in e_tree.estimators_],
                  axis=0)
     indices = np.argsort(importances)[::-1]
@@ -126,7 +126,7 @@ def extra_tree(X, y, trainingparams, num_feat=10, filename=None):
     plt.figure()
     plt.title("Feature importances")
     plt.bar(range(10), importances[indices][:10],
-            color="r", yerr=np.std[indices][:10], align="center")
+            color="r", yerr=std[indices][:10], align="center")
     plt.xticks(range(10), X.columns[indices][:10])
     plt.xlim([-1, 10])
     plt.xlabel("Feature")
@@ -300,7 +300,6 @@ def read_db_table(table, parameter):
 
         datatable = datatable.fillna(0)
         y = pd.DataFrame(datatable[parameter]) #, dtype=str)
-        # y = y.apply(str)
         X = datatable.drop(parameter, axis=1)
         X = X.select_dtypes(['float64'])
     return X, y
@@ -336,15 +335,11 @@ if __name__ == '__main__':
     feature_importances_png = os.path.join(report_folder,
                                            'feature_importances.png')
     X, y = read_db_table(table, parameter)
-    # print("y: {}".format(y))
-    # print("x: {} y: {}".format(len(X), len(y)))
-    # kf = KFold(data.shape[0])
-    print(y)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
-    #for train, test in kf:
+    ch2 = SelectKBest(k=10)
+    # X_train = ch2.fit_transform(X_train, y_train)
+    print(X_train)
     for curr in paramdict:
-        #X_train, X_test = X[train_index], X[test_index]
-        #y_train, y_test = y[train_index], y[test_index]
         y_train_curr = y_train[curr]
         y_test_curr = y_test[curr]
         dot_file = ''.join([curr, '.dot'])
@@ -364,6 +359,7 @@ if __name__ == '__main__':
         logging.info("ET TEST: {}".format(classification_report(forest, X_test,
                                                         y_test_curr)))
         reduced = X_train[important_features]
+        print("reduced: {}".format(reduced))
         ''' fit classifiers!'''
         logging.info(" ".join(["*** Finding best parameters for DT",
                     "using EvolutionarySearchCV ***"]))
