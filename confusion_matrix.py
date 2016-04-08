@@ -7,6 +7,7 @@ Created on 04.06.2015
 """
 from __future__ import division
 from __future__ import print_function
+import os
 try:
     from os import scandir
 except:
@@ -50,48 +51,48 @@ if __name__ == '__main__':
          "natflo_species_richness": ["species_poor", "species_rich"],
         # "natflo_usage": ["grazing", "mowing", "orchards", "vineyards"],
         # "natflo_usage_intensity": ["high", "medium", "low"],
-         "natflo_wetness": ["dry", "mesic", "very_wet"]
+         "natflo_wetness": ["dry", "mesic", "very_wet"],
+         "natflo_acidity": ["alkaline", "acid"]
     }
-    dt_rule_folder = ""
     DSN = 'postgresql://postgres@localhost:5432/rlp_saarburg'
     engine = create_engine(DSN)
     conn = engine.connect()
     algorithmn = "" # "" for dt or seath
     homedir = expanduser('~')
     homesubdirs = defaultdict()
+    output_folder = os.getcwd()
     for i, j in subdirs(homedir):
-       homesubdirs[i] = j
-
-    try:
+        homesubdirs[i] = j
         if 'tubCloud' in homesubdirs:
             output_folder = homesubdirs['tubCloud']
         elif 'ownCloud' in homesubdirs:
             output_folder = homesubdirs['ownCloud']
-        dt_rule_folder = osjoin(homedir, "git", "data_mining_module", "rules")
         output_folder = osjoin(output_folder, "accuracy_assessments")
         test_area = sys.argv[1]
-        for parameter in paramdict:
-            print("current parameter: {}".format(parameter))
-            if algorithmn == '':
-                base_rulename = parameter
-            else:
-                base_rulename = "_".join([parameter, algorithmn])
-            results_tbl = '_'.join(["results", base_rulename, test_area])
-            sql_query = """SELECT {}, classified
-                            FROM {}""".format(parameter, results_tbl)
-            mydf = psql.read_sql(sql_query, engine)
-            if " " in mydf[parameter]:
-                mydf[parameter] = re.sub(r"[\\s]", "_", my_df[parameter])
-            y_true = mydf[parameter].apply(str)
-            y_pred = mydf["classified"].apply(str)
-            # print(confusion_matrix(y_true, y_pred))
-            # , labels=paramdict[parameter]))
-            confusion_out = ''.join([base_rulename, '_', test_area, ".txt"])
-            confusion_out = osjoin(output_folder, confusion_out)
-            print("confusion matrix located: {}".format(confusion_out))
-            with open(confusion_out, 'w+') as f:
-                f.write(classification_report(y_true, y_pred))
-    except IOError as myerror:
-        print(myerror)
-    except BaseException as e:
-        print("Sorry: {}".format(e))
+
+        try:
+            for parameter in paramdict:
+                if algorithmn == '':
+                    base_rulename = parameter
+                else:
+                    base_rulename = "_".join([parameter, algorithmn])
+                results_tbl = '_'.join(["results", base_rulename, test_area])
+                print("current table: {}".format(results_tbl))
+                sql_query = """SELECT {}, classified
+                                FROM {}""".format(parameter, results_tbl)
+                mydf = psql.read_sql(sql_query, engine)
+                if " " in mydf[parameter]:
+                    mydf[parameter] = re.sub(r"[\\s]", "_", my_df[parameter])
+                y_true = mydf[parameter].apply(str)
+                y_pred = mydf["classified"].apply(str)
+                confusion_out = ''.join([base_rulename, '_', test_area, ".txt"])
+                confusion_out = osjoin(output_folder, confusion_out)
+                print("confusion matrix located: {}".format(confusion_out))
+                with open(confusion_out, 'w+') as f:
+                    f.write(classification_report(y_true, y_pred))
+        except IOError as myerror:
+            print(myerror)
+        except ZeroDivisionError as e:
+            print("denominator zero!")
+            continue
+

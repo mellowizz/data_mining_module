@@ -50,9 +50,6 @@ class ColumnSelector(TransformerMixin):
             return self
 
 
-# logging name: data_mining_module.py
-# parameter_log = ''.join([parameter, '.log'])
-# logging_file = '/'.join([report_folder, parameter_log])
 logging.basicConfig(filename='data_mining_module.log',
                     format='%(asctime)s %(message)s',
                     level=logging.INFO)
@@ -62,12 +59,12 @@ DSN = 'postgresql://postgres@localhost:5432/rlp_saarburg'
 # load this from dict cursor?
 paramdict = {
     # "natflo_hydromorphic": ["0", "1"],
-    # "natflo_immature_soil": ["0", "1"],
-    #"natflo_species_richness": ["species_poor", "species_rich"],
+    "natflo_immature_soil": ["0", "1"],
+    "natflo_species_richness": ["species_poor", "species_rich"],
     # "natflo_usage": ["grazing", "mowing", "orchards", "vineyards"],
     # "natflo_usage_intensity": ["high", "medium", "low"],
-     "natflo_wetness": ["dry", "mesic", "wet"]
-    # "natflo_acidity": ["alkaline", "acid"]
+    "natflo_wetness": ["dry", "mesic", "wet"],
+    "natflo_acidity": ["alkaline", "acid"]
     }
 
 trainingparams = {'criterion': 'gini', 'max_depth': 8,
@@ -228,6 +225,8 @@ def get_lineage(tree, feature_names, wet_classes,
                         print(f)
                     except IndexError as f:
                         print("{}: {}".format(f, wet_classes))
+                    except AttributeError as r:
+                        print("{}".format(r))
                 if child in left:
                     parent = np.where(left == child)[0].item()
                     split = '<='
@@ -235,6 +234,8 @@ def get_lineage(tree, feature_names, wet_classes,
                     parent = np.where(right == child)[0].item()
                     split = '>'
 
+                if lineage is None: 
+                   return 
                 lineage.append((features[parent], split,
                                 threshold[parent], parent))
 
@@ -273,22 +274,14 @@ def get_lineage(tree, feature_names, wet_classes,
 def read_db_table(table, parameter):
     engine = create_engine(DSN)
     with engine.connect():
-        ''' read data from table
+        ''' read data from table'''
+        datatable = psql.read_sql('''SELECT * FROM {}
         where natflo_wetness is not null
         and natflo_immature_soil is not null
-        and natflo_species_richness is not'''
-        datatable = psql.read_sql('''SELECT * FROM {}
-                                  where natflo_acidity is not null
-                                  '''.format(table),
+        and natflo_species_richness is not null'''.format(table),
                                   engine)
         if parameter == 'all':
-            # "natflo_acidity",
             parameter = paramdict.keys()
-            # all_ys = [datatable[x]  for x in parameter]
-
-            # y = pd.concat(all_ys)
-            #datatable = datatable[pd.notnull(datatable[parameter])]
-            # datatable = datatable[datatable.isin(paramdict)]
         else:
             parameter = [parameter]
         try:
@@ -298,8 +291,8 @@ def read_db_table(table, parameter):
         except ValueError as e:
             print(e.message)
 
-        datatable = datatable.fillna(0)
-        y = pd.DataFrame(datatable[parameter]) #, dtype=str)
+        datatable = datatable.fillna(0, axis=1)
+        y = pd.DataFrame(datatable[parameter], dtype=str)
         X = datatable.drop(parameter, axis=1)
         X = X.select_dtypes(['float64'])
     return X, y
@@ -336,9 +329,6 @@ if __name__ == '__main__':
                                            'feature_importances.png')
     X, y = read_db_table(table, parameter)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
-    ch2 = SelectKBest(k=10)
-    # X_train = ch2.fit_transform(X_train, y_train)
-    print(X_train)
     for curr in paramdict:
         y_train_curr = y_train[curr]
         y_test_curr = y_test[curr]
@@ -394,7 +384,7 @@ if __name__ == '__main__':
         get_lineage(dt_all, X_train.columns, paramdict[curr],
                     output_file=my_out_file)
         with open(my_file_dot_reduced, 'w+') as f:
-            f = tree.export_graphviz(dt_all, out_file=f,
+            f = tree.export_graphviz(dt, out_file=f,
                                     feature_names=X_train.columns,
                                     class_names=paramdict[curr],
                                     filled=True,
@@ -402,7 +392,7 @@ if __name__ == '__main__':
                                     special_characters=False)
 
         with open(my_file_dot, 'w+') as f:
-            f = tree.export_graphviz(dt, out_file=f,
+            f = tree.export_graphviz(dt_all, out_file=f,
                                     feature_names=X_train.columns,
                                     class_names=paramdict[curr],
                                     filled=True,
