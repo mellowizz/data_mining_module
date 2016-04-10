@@ -291,8 +291,8 @@ def get_lineage(tree, feature_names, wet_classes,
             infile = io.open(output_file, 'wb')
         else:
             infile = io.open(output_file, 'wb')
-            with infile as tree_csv:
-                idx = np.argwhere(left == -1)[:, 0]
+        with infile as tree_csv:
+            idx = np.argwhere(left == -1)[:, 0]
 
             def recurse(left, right, child, lineage=None):
                 if lineage is None:
@@ -304,15 +304,15 @@ def get_lineage(tree, feature_names, wet_classes,
                         print("{}: {}".format(f, wet_classes))
                     except AttributeError as r:
                         print("{}".format(r))
-                        if child in left:
-                            parent = np.where(left == child)[0].item()
-                            split = '<='
-                        else:
-                            parent = np.where(right == child)[0].item()
-                            split = '>'
+                if child in left:
+                    parent = np.where(left == child)[0].item()
+                    split = '<='
+                else:
+                    parent = np.where(right == child)[0].item()
+                    split = '>'
 
-                if lineage is None: 
-                    return 
+                if lineage is None:
+                    return
                 lineage.append((features[parent], split,
                                 threshold[parent], parent))
 
@@ -405,7 +405,8 @@ if __name__ == '__main__':
     feature_importances_png = os.path.join(report_folder,
                                            'feature_importances.png')
     X, y = read_db_table(table, parameter)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4,
+                                                        stratify=y)
     for curr in paramdict:
         y_train_curr = y_train[curr]
         y_test_curr = y_test[curr]
