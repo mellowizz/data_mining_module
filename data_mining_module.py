@@ -65,13 +65,13 @@ paramdict = {
     # "natflo_usage_intensity": ["high", "medium", "low"],
     "natflo_wetness": ["dry", "mesic", "wet"],
     "natflo_acidity": ["alkaline", "acid"]
-    }
+}
 
 trainingparams = {'criterion': 'gini', 'max_depth': 8,
                   'max_features': 'auto', 'min_samples_leaf': 6,
                   'min_samples_split': 8, 'class_weight': 'balanced'}
 et_params = {'n_estimators': 600, 'random_state': 0, 'n_jobs': -1,
-             'class_weight': 'balanced'}
+             'class_weight': 'balanced', 'bootstrap': False}
 
 parameters = {'max_features': ['auto', 'sqrt', 'log2'],
               'max_depth': range(2, 12, 2),
@@ -79,7 +79,84 @@ parameters = {'max_features': ['auto', 'sqrt', 'log2'],
               'min_samples_split': range(2, 20, 2),
               'min_samples_leaf': range(2, 20, 2,),
               'class_weight': ['balanced']
-              }
+             }
+
+
+def treeToJson(decision_tree, feature_names=None):
+
+    js = ""
+
+    def node_to_str(tree, node_id, criterion):
+        if not isinstance(criterion, tree.six.string_types):
+            criterion = "impurity"
+
+        value = tree.value[node_id]
+        if tree.n_outputs == 1:
+            value = value[0, :]
+
+        jsonValue = ', '.join([str(x) for x in value])
+
+        if tree.children_left[node_id] == sklearn.tree._tree.TREE_LEAF:
+            return '"id": "%s", "criterion": "%s", "impurity": "%s", "samples": "%s", "value": [%s]' \
+                % (node_id,
+                   criterion,
+                   tree.impurity[node_id],
+                   tree.n_node_samples[node_id],
+                   jsonValue)
+        else:
+            if feature_names is not None:
+                feature = feature_names[tree.feature[node_id]]
+            else:
+                feature = tree.feature[node_id]
+            if "=" in feature:
+                ruleType = "="
+                ruleValue = "false"
+            else:
+                ruleType = "<="
+                ruleValue = "%.4f" % tree.threshold[node_id]
+            return '"id": "%s", "rule": "%s %s %s", "%s": "%s", "samples": "%s"' \
+                    % (node_id,
+                       feature,
+                       ruleType,
+                       ruleValue,
+                       criterion,
+                       tree.impurity[node_id],
+                       tree.n_node_samples[node_id])
+    def recurse(tree, node_id, criterion, parent=None, depth=0):
+        tabs = "  " * depth
+        js = ""
+
+        left_child = tree.children_left[node_id]
+        right_child = tree.children_right[node_id]
+
+        js = js + "\n" + \
+                tabs + "{\n" + \
+                tabs + "  " + node_to_str(tree, node_id, criterion)
+
+        if left_child != sklearn.tree._tree.TREE_LEAF:
+            js = js + ",\n" + \
+                 tabs + '  "left": ' + \
+                 recurse(tree, \
+                         left_child, \
+                         criterion=criterion, \
+                         parent=node_id, \
+                         depth=depth + 1) + ",\n" + \
+                 tabs + '  "right": ' + \
+                 recurse(tree, \
+                         right_child, \
+                         criterion=criterion, \
+                         parent=node_id,
+                         depth=depth + 1)
+        js = js + tabs + "\n" + \
+             tabs + "}"
+        return js
+
+    if isinstance(decision_tree, sklearn.tree.tree.Tree):
+        js = js + recurse(decision_tree, 0, criterion="impurity")
+    else:
+        js = js + recurse(decision_tree.tree_, 0, criterion=decision_tree.criterion)
+
+    return js
 
 
 def decision_tree_neural(X, y):
@@ -130,8 +207,8 @@ def extra_tree(X, y, trainingparams, num_feat=10, filename=None):
     plt.show()
     if filename is not None:
         plt.savefig(filename)
-    # classification_report(e_tree, X, y)  # , out_file)
-    return e_tree, X.columns[indices][:num_feat]
+        # classification_report(e_tree, X, y)  # , out_file)
+        return e_tree, X.columns[indices][:num_feat]
 
 
 def extra_tree_neural(X, y, num_feat=10):
@@ -193,8 +270,8 @@ def decision_tree(X, y, trainingparam):  # out_file):
     """Returns a decision tree classifier trained on parameters.
 
     Keyword arguments:
-    trainingparam -- dict full of training parameters
-    out_file -- file where the classification report is save to.
+        trainingparam -- dict full of training parameters
+        out_file -- file where the classification report is save to.
 
     """
     return DecisionTreeClassifier(**trainingparam).fit(X, y)
@@ -214,8 +291,8 @@ def get_lineage(tree, feature_names, wet_classes,
             infile = io.open(output_file, 'wb')
         else:
             infile = io.open(output_file, 'wb')
-        with infile as tree_csv:
-            idx = np.argwhere(left == -1)[:, 0]
+            with infile as tree_csv:
+                idx = np.argwhere(left == -1)[:, 0]
 
             def recurse(left, right, child, lineage=None):
                 if lineage is None:
@@ -227,15 +304,15 @@ def get_lineage(tree, feature_names, wet_classes,
                         print("{}: {}".format(f, wet_classes))
                     except AttributeError as r:
                         print("{}".format(r))
-                if child in left:
-                    parent = np.where(left == child)[0].item()
-                    split = '<='
-                else:
-                    parent = np.where(right == child)[0].item()
-                    split = '>'
+                        if child in left:
+                            parent = np.where(left == child)[0].item()
+                            split = '<='
+                        else:
+                            parent = np.where(right == child)[0].item()
+                            split = '>'
 
                 if lineage is None: 
-                   return 
+                    return 
                 lineage.append((features[parent], split,
                                 threshold[parent], parent))
 
@@ -259,7 +336,7 @@ def get_lineage(tree, feature_names, wet_classes,
                                                                  a_split,
                                                                  a_threshold,
                                                                  a_parent_node,
-                                                                 ))
+                                                                ))
                     else:
                         print(node)
                         tree_csv.write(''.join([node, "\n"]))
@@ -276,9 +353,9 @@ def read_db_table(table, parameter):
     with engine.connect():
         ''' read data from table'''
         datatable = psql.read_sql('''SELECT * FROM {}
-        where natflo_wetness is not null
-        and natflo_immature_soil is not null
-        and natflo_species_richness is not null'''.format(table),
+                                  where natflo_wetness is not null
+                                  and natflo_immature_soil is not null
+                                  and natflo_species_richness is not null'''.format(table),
                                   engine)
         if parameter == 'all':
             parameter = paramdict.keys()
@@ -286,7 +363,7 @@ def read_db_table(table, parameter):
             parameter = [parameter]
         try:
             for i in ["kul", "kn1", "kn2", "wert_kn2",
-                      "we1min", "bodenart_kn1", "we2min"]:
+                        "we1min", "bodenart_kn1", "we2min"]:
                 datatable = datatable.drop(i, axis=1)
         except ValueError as e:
             print(e.message)
@@ -295,7 +372,7 @@ def read_db_table(table, parameter):
         y = pd.DataFrame(datatable[parameter], dtype=str)
         X = datatable.drop(parameter, axis=1)
         X = X.select_dtypes(['float64'])
-    return X, y
+        return X, y
 
 if __name__ == '__main__':
     # usage: data_mining_module.py -infolder -outfolder -train/test table
@@ -335,7 +412,7 @@ if __name__ == '__main__':
         dot_file = ''.join([curr, '.dot'])
         dot_file_reduced = ''.join([curr, '_', num_feat, '.dot'])
         my_out_file_reduced = ''.join([rules_folder_reduced, '/',
-                                    curr, '.csv'])
+                                       curr, '.csv'])
         my_out_file = ''.join([rules_folder, '/', curr, '.csv'])
         print("my_out_file: {}".format(my_out_file))
         # dot files go in report_folder
@@ -347,62 +424,61 @@ if __name__ == '__main__':
                                                 num_feat=int(num_feat),
                                                 filename=feature_importances_png)
         logging.info("ET TEST: {}".format(classification_report(forest, X_test,
-                                                        y_test_curr)))
+                                                                y_test_curr)))
         reduced = X_train[important_features]
         print("reduced: {}".format(reduced))
         ''' fit classifiers!'''
         logging.info(" ".join(["*** Finding best parameters for DT",
-                    "using EvolutionarySearchCV ***"]))
+                               "using EvolutionarySearchCV ***"]))
         neural_parameters_reduced = decision_tree_neural(reduced,
-                                                        y_train_curr)
+                                                         y_train_curr)
         neural_parameters_all = decision_tree_neural(X_train, y_train_curr)
         logging.info("Done fitting DT with EvolutionarySearchCV")
         logging.info(" ".join(["*** Fitting DT with parameters from",
-                            "EvolutionarySearchCV and",
-                            "{} selected features ***".format(num_feat)]))
+                               "EvolutionarySearchCV and",
+                               "{} selected features ***".format(num_feat)]))
         dt = decision_tree(reduced, y_train_curr, neural_parameters_reduced)
         logging.info("DT, num features: {}".format(num_feat))
         logging.info("TRAIN report: {}".format(classification_report(dt,
-                                                                    reduced,
-                                                                    y_train_curr)))
+                                                                     reduced,
+                                                                     y_train_curr)))
 
         logging.info("TEST report: {}".format(classification_report(dt,
                                                                     reduced,
                                                                     y_train_curr)))
         finish_dt_final = """Done fitting DT with EvolutionarySearchCV and {}
-                        features""".format(num_feat)
+        features""".format(num_feat)
         dt_all = decision_tree(X_train, y_train_curr, neural_parameters_all)
         logging.info("DT ALL features:")
         logging.info("TRAIN:{}".format(classification_report(dt_all, X_train,
-                                                            y_train_curr)))
+                                                             y_train_curr)))
         logging.info("TEST:{}".format(classification_report(dt_all, X_test,
                                                             y_test_curr)))
         #  files
         get_lineage(dt, X_train.columns, paramdict[curr],
                     output_file=my_out_file_reduced)
-        # write testing data to grasslands_test
         get_lineage(dt_all, X_train.columns, paramdict[curr],
                     output_file=my_out_file)
         with open(my_file_dot_reduced, 'w+') as f:
             f = tree.export_graphviz(dt, out_file=f,
-                                    feature_names=X_train.columns,
-                                    class_names=paramdict[curr],
-                                    filled=True,
-                                    rounded=True,
-                                    special_characters=False)
+                                     feature_names=X_train.columns,
+                                     class_names=paramdict[curr],
+                                     filled=True,
+                                     rounded=True,
+                                     special_characters=False)
 
         with open(my_file_dot, 'w+') as f:
             f = tree.export_graphviz(dt_all, out_file=f,
-                                    feature_names=X_train.columns,
-                                    class_names=paramdict[curr],
-                                    filled=True,
-                                    rounded=True,
-                                    special_characters=False)
+                                     feature_names=X_train.columns,
+                                     class_names=paramdict[curr],
+                                     filled=True,
+                                     rounded=True,
+                                     special_characters=False)
         subprocess.call(["dot", "-Tpng", my_file_dot_reduced, "-o",
-                        ''.join([report_folder, '/', curr, '_',
-                                num_feat, '.png'])])
+                            ''.join([report_folder, '/', curr, '_',
+                                    num_feat, '.png'])])
         subprocess.call(["dot", "-Tpng", my_file_dot, "-o",
-                        ''.join([report_folder, '/', curr, '.png'])])
+                            ''.join([report_folder, '/', curr, '.png'])])
     ''' write test data '''
     engine = create_engine(DSN)
     with engine.connect():
