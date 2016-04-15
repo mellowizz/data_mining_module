@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import division
-import os
 import subprocess
 import sys
 import io
+import os
 from sklearn import cross_validation
 from sklearn import metrics
 from sklearn import pipeline
@@ -16,13 +16,13 @@ from evolutionary_search import EvolutionaryAlgorithmSearchCV
 from sklearn.cross_validation import StratifiedKFold
 from sklearn.cross_validation import train_test_split
 from sklearn.feature_selection import SelectKBest
+from sklearn.feature_selection import SelectFromModel
 import pandas.io.sql as psql
 import pandas as pd
 from sqlalchemy import create_engine
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
-from sklearn.base import TransformerMixin
 
 
 class ColumnSelector(object):
@@ -52,15 +52,8 @@ paramdict = {
 trainingparams = {'criterion': 'gini', 'max_depth': 8,
                   'max_features': 'auto', 'min_samples_leaf': 6,
                   'min_samples_split': 8, 'class_weight': 'balanced'}
-et_params = {'n_estimators': 600, 'random_state': 0, 'n_jobs': -1,
-             'class_weight': 'balanced', 'bootstrap': False}
-
-parameters = {'max_features': ['auto', 'sqrt', 'log2'],
-              'max_depth': range(2, 12, 2),
-              'criterion': ['gini', 'entropy'],
-              'min_samples_split': range(2, 20, 2),
-              'min_samples_leaf': range(2, 20, 2,),
-              'class_weight': ['balanced']}
+et_params = {'n_estimators': 400, 'random_state': 0, 'n_jobs': 4,
+             'class_weight': 'balanced'}
 
 
 def read_db_table(table, parameter='all'):
@@ -91,11 +84,110 @@ def read_db_table(table, parameter='all'):
         X = X.select_dtypes(['float64'])
         return X, y
 
+
+def print_tree(t, root=0, depth=1):
+    if depth == 1:
+        print('def predict(X_i):')
+    indent = '    '*depth
+    print(indent + '# node %s: impurity = %.2f' %
+          (str(root), t.impurity[root]))
+    left_child = t.children_left[root]
+    right_child = t.children_right[root]
+
+    if left_child == tree._tree.TREE_LEAF:
+        print(indent + 'return %s # (node %d)' % (str(t.value[root]), root))
+    else:
+        print(indent + 'if X_i[%d] < %.2f: # (node %d)' % (t.feature[root],
+                                                           t.threshold[root],
+                                                           root))
+        print_tree(t, root=left_child, depth=depth+1)
+
+        print(indent + 'else:')
+        print_tree(t, root=right_child, depth=depth+1)
+
+
+def get_lineage(tree, feature_names, wet_classes,
+                output_file="default.csv"):
+    """Iterates over tree and saves all nodes to file."""
+    left = tree.tree_.children_left
+    right = tree.tree_.children_right
+    threshold = tree.tree_.threshold
+    features = [feature_names[i] for i in tree.tree_.feature]
+    value = tree.tree_.value
+
+    try:
+        if sys.version < '3':
+            infile = io.open(output_file, 'wb')
+        else:
+            infile = io.open(output_file, 'wb')
+        with infile as tree_csv:
+            idx = np.argwhere(left == -1)[:, 0]
+
+            def recurse(left, right, child, lineage=None):
+                if lineage is None:
+                    try:
+                        print(str(value[child]))
+                        lineage = [wet_classes[np.argmax(value[child])]]
+                    except KeyError as f:
+                        print(f)
+                    except IndexError as f:
+                        print("{}: {}".format(f, wet_classes))
+                    except AttributeError as r:
+                        print("{}".format(r))
+                if child in left:
+                    parent = np.where(left == child)[0].item()
+                    split = '<='
+                else:
+                    parent = np.where(right == child)[0].item()
+                    split = '>'
+
+                if lineage is None:
+                    return
+                lineage.append((features[parent], split,
+                                threshold[parent], parent))
+
+                if parent == 0:
+                    lineage.reverse()
+                    return lineage
+                else:
+                    return recurse(left, right, parent, lineage)
+
+            for child in idx:
+                try:
+                    for node in recurse(left, right, child):
+                        if not node:
+                            continue
+                        if type(node) == tuple:
+                            if not (isinstance(node[2], float) and
+                                    isinstance(node[3], int)):
+                                print("skipping tuple..")
+                                continue
+                            a_feature, a_split, a_threshold, a_parent_node = node
+                            tree_csv.write("{},{},{:5f},{}\n".format(a_feature,
+                                                                     a_split,
+                                                                     a_threshold,
+                                                                     a_parent_node,
+                                                                    ))
+                        else:
+                            print(node)
+                            tree_csv.write(''.join([node, "\n"]))
+                except TypeError as e:
+                    print(e)
+    except ValueError as e:
+        print(e)
+    except KeyError as f:
+        print(f)
+    except UnboundLocalError as e:
+        print(e.message)
+
 if __name__ == '__main__':
     table = sys.argv[1]
     X, y = read_db_table(table)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4,
                                                         stratify=y)
+
+    report_folder = os.path.join(os.getcwd(), "training_cm")
+    rules_folder = os.path.join(os.getcwd(), "rules")
     for curr in paramdict:
         y_train_curr = y_train[curr]
         y_test_curr = y_test[curr]
@@ -106,16 +198,17 @@ if __name__ == '__main__':
             'dt__min_samples_split': range(2, 12, 2),
             'dt__min_samples_leaf': range(2, 12, 2),
             'dt__class_weight': ['balanced'],
-            'feature_selection': range(10, 100, 10)
+            'feature_selection': range(10, 200, 10)
             }
 
-        steps = [('feature_selection', SelectKBest()),
-                ('dt', DecisionTreeClassifier())
-                ]
-        pipeline = pipeline.Pipeline(steps)
+        steps = [('feature_selection',
+                  SelectKBest()),
+                  #SelectFromModel(estimator=ExtraTreesClassifier(**et_params))),
+                 ('dt', DecisionTreeClassifier())]
+        pipe = pipeline.Pipeline(steps)
 
         cv = EvolutionaryAlgorithmSearchCV(
-            estimator=pipeline,
+            estimator=pipe,
             params=grid,
             scoring="accuracy",
             cv=StratifiedKFold(y_train_curr),
@@ -129,3 +222,22 @@ if __name__ == '__main__':
         y_pred = cv.predict(X_test)
         report = metrics.classification_report(y_test_curr, y_pred)
         print(report)
+        # print(pipe.named_steps['dt'].get_support())
+        # num_feat = str(len(pipe.named_steps['dt'].get_support()))
+        with open(curr + '.dot', 'w+') as f:
+            f = tree.export_graphviz(cv.named_steps['dt'], out_file=f,
+                                     feature_names=X_train.columns,
+                                     class_names=paramdict[curr],
+                                     filled=True,
+                                     rounded=True,
+                                     special_characters=False)
+
+        subprocess.call(["dot", "-Tpng", curr + '.dot', "-o",
+                            ''.join([report_folder, '/', curr, '.png'])])
+    ''' write test data '''
+    engine = create_engine(DSN)
+    with engine.connect():
+        test = pd.concat([X_test, y_test], axis=1)
+        test.index.name = 'id'
+        test_table = '_'.join([table, "test"])
+        test.to_sql(test_table, engine, if_exists='replace', index=True)
