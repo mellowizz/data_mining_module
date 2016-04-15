@@ -109,13 +109,13 @@ def print_tree(t, root=0, depth=1):
 def get_lineage(tree, feature_names, wet_classes,
                 output_file="default.csv"):
     """Iterates over tree and saves all nodes to file."""
-    left = tree.tree_.children_left
-    right = tree.tree_.children_right
-    threshold = tree.tree_.threshold
-    features = [feature_names[i] for i in tree.tree_.feature]
-    value = tree.tree_.value
-
     try:
+
+        left = tree.tree_.children_left
+        right = tree.tree_.children_right
+        threshold = tree.tree_.threshold
+        features = [feature_names[i] for i in tree.tree_.feature]
+        value = tree.tree_.value
         if sys.version < '3':
             infile = io.open(output_file, 'wb')
         else:
@@ -224,8 +224,14 @@ if __name__ == '__main__':
         print(report)
         # print(pipe.named_steps['dt'].get_support())
         # num_feat = str(len(pipe.named_steps['dt'].get_support()))
+        my_out_file = ''.join([rules_folder, '/', curr, '.csv'])
+        dt = pipe.named_steps['dt']
+        assert(dt is not None)
+        # print_tree(dt)
+        get_lineage(dt, X_train.columns, paramdict[curr],
+                    output_file=my_out_file)
         with open(curr + '.dot', 'w+') as f:
-            f = tree.export_graphviz(cv.named_steps['dt'], out_file=f,
+            f = tree.export_graphviz(dt, out_file=f,
                                      feature_names=X_train.columns,
                                      class_names=paramdict[curr],
                                      filled=True,
@@ -241,3 +247,28 @@ if __name__ == '__main__':
         test.index.name = 'id'
         test_table = '_'.join([table, "test"])
         test.to_sql(test_table, engine, if_exists='replace', index=True)
+        '''
+        features = cv.steps[-1]
+        print(X.columns[features.transform(np.arange(len(X.columns)))])
+        # feature_importances_
+        importances = pipe.named_steps['feature_selection'].feature_importances_
+        std = np.std([tree.feature_importances_ for tree in dt.estimators_],
+                    axis=0)
+        indices = np.argsort(importances)[::-1]
+        # Print the feature ranking
+        logging.info("Feature ranking:")
+        for f in range(num_feat):
+            logging.info(("{} feature {} ({})".format(f + 1, X.columns[indices[f]],
+                                                    importances[indices[f]])))
+
+        # Plot the feature importances of the forest
+        plt.figure()
+        plt.title("Feature importances")
+        plt.bar(range(10), importances[indices][:10],
+                color="r", yerr=std[indices][:10], align="center")
+        plt.xticks(range(10), X.columns[indices][:10])
+        plt.xlim([-1, 10])
+        plt.xlabel("Feature")
+        plt.show()
+        print(X.columns[indices][:10])
+        '''
