@@ -49,9 +49,6 @@ paramdict = {
     "natflo_acidity": ["alkaline", "acid"]
 }
 
-trainingparams = {'criterion': 'gini', 'max_depth': 8,
-                  'max_features': 'auto', 'min_samples_leaf': 6,
-                  'min_samples_split': 8, 'class_weight': 'balanced'}
 et_params = {'n_estimators': 400, 'random_state': 0, 'n_jobs': 4,
              'class_weight': 'balanced'}
 
@@ -191,25 +188,34 @@ if __name__ == '__main__':
     for curr in paramdict:
         y_train_curr = y_train[curr]
         y_test_curr = y_test[curr]
+
+        parameters = {
+            'max_features': ['auto', 'sqrt', 'log2'],
+            'max_depth': range(2, 20, 2),
+            'criterion': ['gini', 'entropy'],
+            'min_samples_split': range(2, 20, 2),
+            'min_samples_leaf': range(2, 20, 2),
+            'class_weight': ['balanced']
+        }
         grid = {
             'dt__max_features': ['auto', 'sqrt', 'log2'],
             'dt__max_depth': range(2, 12, 2),
             'dt__criterion': ['gini', 'entropy'],
             'dt__min_samples_split': range(2, 12, 2),
             'dt__min_samples_leaf': range(2, 12, 2),
-            'dt__class_weight': ['balanced'],
-            'feature_selection': range(10, 200, 10)
+            'dt__class_weight': ['balanced']
+            #'feature_selection': range(10, 100, 10)
             }
 
         steps = [('feature_selection',
-                  SelectKBest()),
-                  #SelectFromModel(estimator=ExtraTreesClassifier(**et_params))),
+                  #SelectKBest()),
+                  SelectFromModel(estimator=ExtraTreesClassifier(**et_params))),
                  ('dt', DecisionTreeClassifier())]
         pipe = pipeline.Pipeline(steps)
 
         cv = EvolutionaryAlgorithmSearchCV(
-            estimator=pipe,
-            params=grid,
+            estimator=DecisionTreeClassifier(),  # pipe,
+            params=parameters,  # grid,
             scoring="accuracy",
             cv=StratifiedKFold(y_train_curr),
             verbose=1,
@@ -222,14 +228,21 @@ if __name__ == '__main__':
         y_pred = cv.predict(X_test)
         report = metrics.classification_report(y_test_curr, y_pred)
         print(report)
-        # print(pipe.named_steps['dt'].get_support())
-        # num_feat = str(len(pipe.named_steps['dt'].get_support()))
+        mydt = cv.best_params_
+        dt = DecisionTreeClassifier(**mydt).fit(X_train, y_train_curr)
+        y_pred = dt.predict(X_test)
+        report = metrics.classification_report(y_test_curr, y_pred)
+        #print("best estimator: {}".format(cv.best_estimator_))
+        #print("named step: {}".format(pipe.named_steps['dt']))
+        #print("best params: {}".format(cv.best_params_))
         my_out_file = ''.join([rules_folder, '/', curr, '.csv'])
-        dt = pipe.named_steps['dt']
-        assert(dt is not None)
-        # print_tree(dt)
         get_lineage(dt, X_train.columns, paramdict[curr],
                     output_file=my_out_file)
+
+        report = metrics.classification_report(y_test_curr, y_pred)
+        # X_new =SelectKBest(k=pipe.named_steps['feature_selection']).fit_transform(X_train,
+        #                                                                    y_train_curr)
+        # mydt = DecisionTreeClassifier(cv.best_params_).fit(X_new, y_train_curr)
         with open(curr + '.dot', 'w+') as f:
             f = tree.export_graphviz(dt, out_file=f,
                                      feature_names=X_train.columns,
