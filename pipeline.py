@@ -25,7 +25,8 @@ from sqlalchemy import create_engine
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
-
+from matplotlib import rcParams
+rcParams.update({'figure.autolayout': True})
 
 class ColumnSelector(object):
 
@@ -37,6 +38,7 @@ class ColumnSelector(object):
 
     def fit(self, X, y=None):
         return self
+
 
 
 logging.basicConfig(filename='pipeline.log',
@@ -52,23 +54,35 @@ paramdict = {
 }
 
 
-def plot_top_features(atree, X, num_feat=10):
+def plot_top_features(atree, X, parameter, num_feat=10):
     importances = atree.feature_importances_
-    std = np.std([tree.feature_importances_ for tree in atree.estimators_],
-                 axis=0)
     indices = np.argsort(importances)[::-1]
     for f in range(num_feat):
         logging.info(("{} feature {} ({})".format(f + 1, X.columns[indices[f]],
-                                                  importances[indices[f]])))
-    # Plot the feature importances of the forest
+                                                importances[indices[f]])))
     plt.figure()
     plt.title("Feature importances")
-    plt.bar(range(10), importances[indices][:10],
-            color="r", yerr=std[indices][:10], align="center")
-    plt.xticks(range(10), X.columns[indices][:10])
+    plt.xticks(range(10), X.columns[indices][:10], rotation=45)
+    plt.margins(0.8)
     plt.xlim([-1, 10])
     plt.xlabel("Feature")
+    if 'ExtraTrees' in type(atree).__name__:
+        std = np.std([tree.feature_importances_ for tree in atree.estimators_],
+                    axis=0)
+        # Plot the feature importances of the forest
+        plt.bar(range(10), importances[indices][:10],
+                color="r", yerr=std[indices][:10], align="center")
+    else:
+        # Plot the feature importances of the forest
+        plt.bar(range(10), importances[indices][:10],
+                color="r", align="center")
+
+    save = os.path.join(os.getcwd(), 'training_cm') + '/' + type(atree).__name__
+    save +=  parameter + '.png'
+    plt.savefig(save, dpi=300, format='png')
     plt.show()
+    print("saving to: {}".format(save))
+
 
 def read_db_table(table, parameter='all'):
     engine = create_engine(DSN)
@@ -178,24 +192,26 @@ if __name__ == '__main__':
     engine = create_engine(DSN)
     report_folder = os.path.join(os.getcwd(), "training_cm")
     rules_folder = os.path.join(os.getcwd(), "rules")
+    msk = np.random.rand(len(X)) < 0.6
+    X_train, X_test = X[msk], X[~msk]
+    y_train, y_test = y[msk], y[~msk]
+    with engine.connect():
+        pandas_sql = pd.io.sql.pandasSQL_builder(engine, schema=None,
+                                                    flavor=None)
+        test = pd.concat([X_test, y_test], axis=1,
+                        join_axes=[X_test.index]).drop_duplicates()
+        test.index.name = 'id'
+        test_table = '_'.join(["test", table])
+        test.index.name = 'id'
+        test.to_sql(test_table, engine, if_exists='replace',
+                    index_label='id')
     for curr in paramdict:
-        y_curr = y[curr]
-        msk = np.random.rand(len(X)) < 0.6
-        y_train, y_test = y_curr[msk], y_curr[~msk]
-        X_train, X_test = X[msk], X[~msk]
-        y_train_curr = y_train
-        y_test_curr = y_test
+        y_test_curr = y_test[curr]
+        y_train_curr = y_train[curr]
         print("X: {}, y: {}".format(len(X), len(y)))
-        print("X_train: {}, y_train: {}".format(len(X_train), len(y_train)))
+        print("X_train: {}, y_train: {}".format(len(X_train), len(y_train_curr)))
         print("X_test: {}, y_test: {}".format(len(X_test), len(y_test)))
         print("curr parameter: {}".format(curr))
-        if curr == 'wetness':
-            with engine.connect():
-                test = pd.concat([X_test, y_test], axis=1,
-                                join_axes=[X_test.index]).drop_duplicates()
-                test.index.name = 'id'
-                test_table = '_'.join(["test", table])
-                test.to_sql(test_table, engine, if_exists='replace')
         dt_params = {
             'max_features': ['auto', 'sqrt', 'log2'],
             'max_depth': range(2, 20, 2),
@@ -230,7 +246,7 @@ if __name__ == '__main__':
         etree.fit(X_train, y_train_curr)
         # score = ross_val_score(etree, X_train, y_train_curr)
         # logging.info("Training cross validation score: {}".format(score))
-        plot_top_features(etree, X_train)
+        plot_top_features(etree, X_train, curr)
         y_pred = etree.predict(X_test)
         report = metrics.classification_report(y_test_curr, y_pred)
         # save report
@@ -254,14 +270,14 @@ if __name__ == '__main__':
         logging.info(report)
         dt = DecisionTreeClassifier(**dt.best_params_).fit(X_train, y_train_curr)
         y_pred = dt.predict(X_test)
+        logging.info("DT fitted with best parameters")
         report = metrics.classification_report(y_test_curr, y_pred)
+        plot_top_features(dt, X_train, curr)
+        # save report
         logging.info(report)
         my_out_file = ''.join([rules_folder, '/', curr, '.csv'])
         get_lineage(dt, X_train.columns, paramdict[curr],
                     output_file=my_out_file)
-        logging.info("DT fitted with best parameters")
-        # save report
-        logging.info(metrics.classification_report(y_test_curr, y_pred))
         with open(curr + '.dot', 'w+') as f:
             f = tree.export_graphviz(dt, out_file=f,
                                     feature_names=X_train.columns,
