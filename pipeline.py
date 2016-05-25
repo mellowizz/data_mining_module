@@ -28,19 +28,6 @@ import logging
 from matplotlib import rcParams
 rcParams.update({'figure.autolayout': True})
 
-class ColumnSelector(object):
-
-    def __init__(self, cols):
-        self.cols = cols
-
-    def transform(self, X):
-        return X[self.cols]
-
-    def fit(self, X, y=None):
-        return self
-
-
-
 logging.basicConfig(filename='pipeline.log',
                     format='%(asctime)s %(message)s',
                     level=logging.INFO)
@@ -190,11 +177,12 @@ if __name__ == '__main__':
     X, y = read_db_table(table)
     ''' write test data '''
     engine = create_engine(DSN)
-    report_folder = os.path.join(os.getcwd(), "training_cm")
+    report_folder = os.path.join(os.getcwd(), "training_cm_new")
     rules_folder = os.path.join(os.getcwd(), "rules")
     msk = np.random.rand(len(X)) < 0.6
     X_train, X_test = X[msk], X[~msk]
     y_train, y_test = y[msk], y[~msk]
+    '''
     with engine.connect():
         pandas_sql = pd.io.sql.pandasSQL_builder(engine, schema=None,
                                                     flavor=None)
@@ -205,6 +193,7 @@ if __name__ == '__main__':
         test.index.name = 'id'
         test.to_sql(test_table, engine, if_exists='replace',
                     index_label='id')
+    '''
     for curr in paramdict:
         y_test_curr = y_test[curr]
         y_train_curr = y_train[curr]
