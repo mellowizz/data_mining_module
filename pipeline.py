@@ -2,12 +2,13 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import division
+from builtins import input
 import subprocess
 import sys
 import io
 import os
-from sklearn import cross_validation
-from sklearn.cross_validation import cross_val_score
+# from sklearn import cross_validation
+# from sklearn.cross_validation import cross_val_score
 from sklearn import metrics
 from sklearn import pipeline
 from sklearn.ensemble import ExtraTreesClassifier
@@ -15,9 +16,9 @@ from sklearn.tree import DecisionTreeClassifier
 import sklearn.tree as tree
 from evolutionary_search import EvolutionaryAlgorithmSearchCV
 from sklearn.cross_validation import StratifiedKFold
-from sklearn.cross_validation import train_test_split
-from sklearn.cross_validation import StratifiedShuffleSplit
-from sklearn.feature_selection import SelectKBest
+# from sklearn.cross_validation import train_test_split
+# from sklearn.cross_validation import StratifiedShuffleSplit
+# from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import SelectFromModel
 import pandas.io.sql as psql
 import pandas as pd
@@ -34,6 +35,9 @@ logging.basicConfig(filename='pipeline.log',
 
 DSN = 'postgresql://postgres@localhost:5432/rlp_saarburg'
 
+report_folder = os.path.join(os.getcwd(), "training_cm_newest")
+rules_folder = os.path.join(os.getcwd(), "rules_newest")
+
 # load this from dict cursor?
 paramdict = {
     "natflo_wetness": ["dry", "mesic", "wet"],
@@ -46,7 +50,7 @@ def plot_top_features(atree, X, parameter, num_feat=10):
     indices = np.argsort(importances)[::-1]
     for f in range(num_feat):
         logging.info(("{} feature {} ({})".format(f + 1, X.columns[indices[f]],
-                                                importances[indices[f]])))
+                                                  importances[indices[f]])))
     plt.figure()
     plt.title("Feature importances")
     plt.xticks(range(10), X.columns[indices][:10], rotation=45)
@@ -55,7 +59,7 @@ def plot_top_features(atree, X, parameter, num_feat=10):
     plt.xlabel("Feature")
     if 'ExtraTrees' in type(atree).__name__:
         std = np.std([tree.feature_importances_ for tree in atree.estimators_],
-                    axis=0)
+                     axis=0)
         # Plot the feature importances of the forest
         plt.bar(range(10), importances[indices][:10],
                 color="r", yerr=std[indices][:10], align="center")
@@ -64,8 +68,9 @@ def plot_top_features(atree, X, parameter, num_feat=10):
         plt.bar(range(10), importances[indices][:10],
                 color="r", align="center")
 
-    save = os.path.join(os.getcwd(), 'training_cm') + '/' + type(atree).__name__
-    save +=  parameter + '.png'
+    save = os.path.join(os.getcwd(), 'training_cm')
+    save += '/' + type(atree).__name__
+    save += parameter + '.png'
     plt.savefig(save, dpi=300, format='png')
     plt.show()
     print("saving to: {}".format(save))
@@ -174,16 +179,37 @@ def get_lineage(tree, feature_names, wet_classes,
 
 if __name__ == '__main__':
     table = sys.argv[1]
+    if not os.path.exists(report_folder):
+        choice = input("Create folder: {} y/n?".format(report_folder))
+        if choice.lower() == 'y':
+            try:
+                os.mkdir(report_folder)
+                print("folder: {} created sucessfully".format(report_folder))
+            except OSError as e:
+                print("Error: {}".format(e.message))
+                sys.exit(1)
+        else:
+            sys.exit("goodbye!")
+
+    if not os.path.exists(rules_folder):
+        choice = input("Create folder: {} y/n?".format(rules_folder))
+        if choice.lower() == 'y':
+            try:
+                os.mkdir(rules_folder)
+                print("folder: {} created sucessfully".format(rules_folder))
+            except OSError as e:
+                print("Error: {}".format(e.message))
+                sys.exit(1)
+        else:
+            sys.exit("goodbye!")
+
     X, y = read_db_table(table)
-    ''' write test data '''
     engine = create_engine(DSN)
-    report_folder = os.path.join(os.getcwd(), "training_cm_new")
-    rules_folder = os.path.join(os.getcwd(), "rules")
     msk = np.random.rand(len(X)) < 0.6
     X_train, X_test = X[msk], X[~msk]
     y_train, y_test = y[msk], y[~msk]
-    '''
     with engine.connect():
+        ''' write test data to DB'''
         pandas_sql = pd.io.sql.pandasSQL_builder(engine, schema=None,
                                                     flavor=None)
         test = pd.concat([X_test, y_test], axis=1,
@@ -193,7 +219,6 @@ if __name__ == '__main__':
         test.index.name = 'id'
         test.to_sql(test_table, engine, if_exists='replace',
                     index_label='id')
-    '''
     for curr in paramdict:
         y_test_curr = y_test[curr]
         y_train_curr = y_train[curr]
@@ -250,7 +275,7 @@ if __name__ == '__main__':
             gene_mutation_prob=0.10,
             tournament_size=3,
             generations_number=10,
-            n_jobs=4)
+            n_jobs=-1) ## !! 1 wenn es nicht funktioniert
         dt.fit(X_train, y_train_curr)
         y_pred = dt.predict(X_test)
         report = metrics.classification_report(y_test_curr, y_pred)
