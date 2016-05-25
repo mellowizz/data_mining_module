@@ -35,8 +35,8 @@ logging.basicConfig(filename='pipeline.log',
 
 DSN = 'postgresql://postgres@localhost:5432/rlp_saarburg'
 
-report_folder = os.path.join(os.getcwd(), "training_cm_newest")
-rules_folder = os.path.join(os.getcwd(), "rules_newest")
+report_folder = os.path.join(os.getcwd(), "training_cm")
+rules_folder = os.path.join(os.getcwd(), "rules")
 
 # load this from dict cursor?
 paramdict = {
